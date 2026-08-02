@@ -203,6 +203,12 @@ describe('v4v-compatible aliases', () => {
     ).toBe(true)
     // expectedMsats against an amountless invoice is refused.
     expect(verifyInvoiceCommitment({ bolt11: SPEC_INVOICE, paymentHash: SPEC_HASH, expectedMsats: 1n }).ok).toBe(false)
+    // Non-finite/fractional expectedMsats returns a verdict, never throws.
+    for (const bad of [NaN, Infinity, 1.5]) {
+      const v = verifyInvoiceCommitment({ bolt11: agreed, paymentHash: hash, expectedMsats: bad })
+      expect(v.ok).toBe(false)
+      expect(v.reason).toMatch(/safe integer/)
+    }
   })
 })
 

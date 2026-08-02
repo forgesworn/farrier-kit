@@ -184,6 +184,7 @@ describe('resolveLnurlPay', () => {
       nostr: '{"kind":9734}',
       fetchImpl,
       nowSeconds: () => INVOICE_TIME + 100,
+      verifyDescriptionHash: false, // fixture has no h tag; this test only checks the query param
     })
     expect(result.zap).toBe(true)
     const cb = new URL(calls[1])
@@ -283,6 +284,53 @@ describe('resolveLnurlPay', () => {
     await expect(
       resolveLnurlPay({ address: 'bob@w.example.net', amountSats: 250_000, fetchImpl: badFetch.fetchImpl, nowSeconds: () => INVOICE_TIME + 100 }),
     ).rejects.toThrow(/description_hash/)
+  })
+
+  it('binds a zap invoice to the zap request per NIP-57, not the metadata', async () => {
+    const zapReq = '{"kind":9734,"tags":[],"content":""}'
+    const zapHash = bytesToHex(sha256(new TextEncoder().encode(zapReq)))
+    const meta = { ...METADATA, allowsNostr: true, nostrPubkey: 'ab'.repeat(32) }
+    // Compliant: invoice h tag = sha256(zap request).
+    const good = buildInvoice('lnbc2500u', [tag(1, words52(HASH)), tag(23, words52(zapHash))])
+    const okFetch = fakeFetch({
+      'https://w.example.net/.well-known/lnurlp/bob': { body: meta },
+      'https://pay.example.com/cb': { body: { pr: good } },
+    })
+    const result = await resolveLnurlPay({ address: 'bob@w.example.net', amountSats: 250_000, nostr: zapReq, fetchImpl: okFetch.fetchImpl, nowSeconds: () => INVOICE_TIME + 100 })
+    expect(result.zap).toBe(true)
+    expect(result.bolt11).toBe(good)
+    // Non-compliant zap: invoice commits to sha256(metadata) instead — reject.
+    const wrong = buildInvoice('lnbc2500u', [
+      tag(1, words52(HASH)),
+      tag(23, words52(bytesToHex(sha256(new TextEncoder().encode(meta.metadata))))),
+    ])
+    const badFetch = fakeFetch({
+      'https://w.example.net/.well-known/lnurlp/bob': { body: meta },
+      'https://pay.example.com/cb': { body: { pr: wrong } },
+    })
+    await expect(
+      resolveLnurlPay({ address: 'bob@w.example.net', amountSats: 250_000, nostr: zapReq, fetchImpl: badFetch.fetchImpl, nowSeconds: () => INVOICE_TIME + 100 }),
+    ).rejects.toThrow(/zap request/)
+    // A zap invoice with NO h tag is rejected (no commitment at all).
+    const noH = buildInvoice('lnbc2500u', [tag(1, words52(HASH))])
+    const noHFetch = fakeFetch({
+      'https://w.example.net/.well-known/lnurlp/bob': { body: meta },
+      'https://pay.example.com/cb': { body: { pr: noH } },
+    })
+    await expect(
+      resolveLnurlPay({ address: 'bob@w.example.net', amountSats: 250_000, nostr: zapReq, fetchImpl: noHFetch.fetchImpl, nowSeconds: () => INVOICE_TIME + 100 }),
+    ).rejects.toThrow(/zap request/)
+  })
+
+  it('truncates a comment by characters, not bytes (LUD-12)', async () => {
+    const { fetchImpl, calls } = fakeFetch({
+      'https://w.example.net/.well-known/lnurlp/bob': { body: { ...METADATA, commentAllowed: 4 } },
+      'https://pay.example.com/cb': { body: { pr: INVOICE_250K } },
+    })
+    // Four multibyte characters must survive a limit of 4 (a byte budget would
+    // drop half of them).
+    await resolveLnurlPay({ address: 'bob@w.example.net', amountSats: 250_000, comment: 'éàüô extra', fetchImpl, nowSeconds: () => INVOICE_TIME + 100 })
+    expect(new URL(calls[1]).searchParams.get('comment')).toBe('éàüô')
   })
 
   it('drops a verifyUrl that is cross-origin or points inward (no stored SSRF)', async () => {

@@ -306,7 +306,12 @@ export function verifyInvoiceCommitment({
     return { ok: false, reason: `invoice is on ${decoded.network}, expected ${network}`, amountMsats: decoded.amountMsats, network: decoded.network }
   }
   if (expectedMsats !== undefined) {
-    const want = typeof expectedMsats === 'bigint' ? expectedMsats : BigInt(Math.trunc(expectedMsats))
+    if (typeof expectedMsats === 'number' && !Number.isSafeInteger(expectedMsats)) {
+      // NaN/Infinity/fractional: return a verdict (fail closed) rather than
+      // throwing a raw RangeError from BigInt() — this is an exact payment gate.
+      return { ok: false, reason: 'expectedMsats must be a safe integer', amountMsats: decoded.amountMsats, network: decoded.network }
+    }
+    const want = typeof expectedMsats === 'bigint' ? expectedMsats : BigInt(expectedMsats)
     if (decoded.amountMsats === null) {
       return { ok: false, reason: 'invoice is amountless but an exact amount was required', network: decoded.network }
     }

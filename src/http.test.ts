@@ -111,6 +111,32 @@ describe('fetchJson', () => {
     expect(await fetchJson('https://svc.example.com', { maxBytes: 1000, fetchImpl: async () => streamResponse(small) })).toEqual({ ok: true })
   })
 
+  it('caps a Node-Readable (async-iterable) body — node-fetch@2 has no getReader', async () => {
+    const enc = new TextEncoder()
+    async function* bigGen() {
+      yield enc.encode('{"a":"')
+      yield enc.encode('x'.repeat(1000))
+      yield enc.encode('"}')
+    }
+    const asyncIterableResponse = (gen: AsyncIterable<Uint8Array>): Response =>
+      ({
+        ok: true,
+        status: 200,
+        headers: { get: () => null }, // no content-length, the dangerous case
+        body: gen,
+        json: async () => ({}),
+      }) as unknown as Response
+    await expect(
+      fetchJson('https://svc.example.com', { maxBytes: 100, fetchImpl: async () => asyncIterableResponse(bigGen()) }),
+    ).rejects.toBeInstanceOf(ResponseTooLargeError)
+    async function* smallGen() {
+      yield new TextEncoder().encode('{"ok":true}')
+    }
+    expect(
+      await fetchJson('https://svc.example.com', { maxBytes: 1000, fetchImpl: async () => asyncIterableResponse(smallGen()) }),
+    ).toEqual({ ok: true })
+  })
+
   it('rejects on an oversized content-length before reading the body', async () => {
     let read = false
     const resp = {

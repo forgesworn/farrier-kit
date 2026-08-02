@@ -41,25 +41,41 @@ async function readCappedJson<T>(response: Response, maxBytes: number, host: str
     await response.body?.cancel?.().catch(() => {})
     throw new ResponseTooLargeError(host, maxBytes)
   }
-  const body = response.body as ReadableStream<Uint8Array> | null | undefined
-  if (!body || typeof body.getReader !== 'function') {
-    return (await response.json()) as T
-  }
-  const reader = body.getReader()
+  const body = response.body as (ReadableStream<Uint8Array> & AsyncIterable<Uint8Array>) | null | undefined
   const chunks: Uint8Array[] = []
   let total = 0
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done) break
-    if (value) {
-      total += value.byteLength
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => {})
-        throw new ResponseTooLargeError(host, maxBytes)
-      }
-      chunks.push(value)
-    }
+  const push = (chunk: Uint8Array): void => {
+    total += chunk.byteLength
+    if (total > maxBytes) throw new ResponseTooLargeError(host, maxBytes)
+    chunks.push(chunk)
   }
+
+  if (body && typeof body.getReader === 'function') {
+    // Web streams (browser, undici/Node 18+).
+    const reader = body.getReader()
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        if (value) push(value)
+      }
+    } catch (err) {
+      await reader.cancel().catch(() => {})
+      throw err
+    }
+  } else if (body && typeof (body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator] === 'function') {
+    // Node Readable (node-fetch@2) — async-iterable, no getReader. Without this
+    // the cap was bypassable: an unbounded chunked body with no content-length.
+    const iterable = body as AsyncIterable<Uint8Array>
+    for await (const chunk of iterable) {
+      push(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk as ArrayBufferLike))
+    }
+  } else {
+    // No stream to meter (test doubles, exotic runtimes): content-length was
+    // already checked above; fall back to the parsed body.
+    return (await response.json()) as T
+  }
+
   const buf = new Uint8Array(total)
   let offset = 0
   for (const c of chunks) {

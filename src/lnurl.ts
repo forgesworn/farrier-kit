@@ -190,12 +190,11 @@ export function isPrivateIpLiteral(hostname: string): boolean {
   return false
 }
 
-// Strip surrounding IPv6 brackets, lowercase, and drop a single fully-qualified
-// trailing dot (`localhost.` and `10.0.0.1.` resolve exactly as without it).
+// Strip surrounding IPv6 brackets, lowercase, and drop ALL trailing dots
+// (`localhost.`, `localhost..`, `10.0.0.1.` resolve as without them; a
+// non-standard resolver might accept the empty-label forms a single strip left).
 function stripHost(hostname: string): string {
-  let host = hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  if (host.endsWith('.')) host = host.slice(0, -1)
-  return host
+  return hostname.replace(/^\[|\]$/g, '').toLowerCase().replace(/\.+$/, '')
 }
 
 function isIpLiteral(host: string): boolean {
@@ -321,13 +320,17 @@ function safeSendable(value: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : 0
 }
 
-/** Truncate a comment to a BYTE budget (LUD-12 counts bytes), without splitting a code point. */
-function truncateComment(comment: string, maxBytes: number): string {
-  const budget = Math.min(maxBytes, COMMENT_MAX)
-  const bytes = new TextEncoder().encode(comment)
-  if (bytes.length <= budget) return comment
-  // Decode the byte-prefix, dropping a trailing partial multi-byte sequence.
-  return new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, budget)).replace(/�$/, '')
+/**
+ * Truncate a comment to the service's LUD-12 limit, counted in Unicode code
+ * points (LUD-12 measures characters, not bytes — a byte budget over-truncates
+ * multibyte text), never splitting a code point. COMMENT_MAX is a separate
+ * local hard ceiling against an absurd service-set limit.
+ */
+function truncateComment(comment: string, commentAllowed: number): string {
+  const budget = Math.min(commentAllowed, COMMENT_MAX)
+  const codePoints = Array.from(comment)
+  if (codePoints.length <= budget) return comment
+  return codePoints.slice(0, budget).join('')
 }
 
 function readMetadata(body: Record<string, unknown>): LnurlPayMetadata {
@@ -435,13 +438,22 @@ export async function resolveLnurlPay(opts: ResolveLnurlPayOptions): Promise<Res
     }
   }
 
-  // LUD-06: the invoice's description_hash binds it to the metadata string.
-  // A service that swaps the description (or, for zaps, the request) breaks
-  // this. Only enforce when both sides are present.
-  if (opts.verifyDescriptionHash !== false && decoded.descriptionHashHex && metadata.metadata) {
-    const expected = bytesToHex(sha256(new TextEncoder().encode(metadata.metadata)))
-    if (expected !== decoded.descriptionHashHex.toLowerCase()) {
-      fail('DESCRIPTION_HASH_MISMATCH', 'invoice description_hash does not match the LNURL metadata')
+  // The invoice's description_hash binds it to what was requested. NIP-57:
+  // for a zap the h tag MUST be sha256(the signed zap request); LUD-06:
+  // otherwise it is sha256(the metadata string). Verifying the wrong side
+  // would both reject compliant zaps and wave through a zap invoice with no
+  // commitment at all.
+  if (opts.verifyDescriptionHash !== false) {
+    if (zap) {
+      const expected = bytesToHex(sha256(new TextEncoder().encode(String(opts.nostr))))
+      if (!decoded.descriptionHashHex || expected !== decoded.descriptionHashHex.toLowerCase()) {
+        fail('DESCRIPTION_HASH_MISMATCH', 'zap invoice description_hash does not commit to the zap request')
+      }
+    } else if (decoded.descriptionHashHex && metadata.metadata) {
+      const expected = bytesToHex(sha256(new TextEncoder().encode(metadata.metadata)))
+      if (expected !== decoded.descriptionHashHex.toLowerCase()) {
+        fail('DESCRIPTION_HASH_MISMATCH', 'invoice description_hash does not match the LNURL metadata')
+      }
     }
   }
 
