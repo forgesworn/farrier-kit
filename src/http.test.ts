@@ -111,7 +111,7 @@ describe('fetchJson', () => {
     expect(await fetchJson('https://svc.example.com', { maxBytes: 1000, fetchImpl: async () => streamResponse(small) })).toEqual({ ok: true })
   })
 
-  it('caps a Node-Readable (async-iterable) body — node-fetch@2 has no getReader', async () => {
+  it('caps a Node-Readable (async-iterable) body, node-fetch@2 has no getReader', async () => {
     const enc = new TextEncoder()
     async function* bigGen() {
       yield enc.encode('{"a":"')

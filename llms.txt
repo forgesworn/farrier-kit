@@ -11,7 +11,7 @@ bolt11 invoice, resolve a Lightning Address to an invoice for an exact amount
 (SSRF-guarded, with the returned invoice checked for amount/network/expiry/
 description-hash), check an invoice commits to an expected payment_hash before
 paying, or verify a revealed preimage after settlement. It is NOT a wallet and
-NOT a node client — it decodes, resolves, and verifies; it holds no keys and
+NOT a node client. It decodes, resolves, and verifies; it holds no keys and
 moves no money. For SENDING payments, zaps, WebLN or NWC, use
 @getalby/lightning-tools instead; for pure decode, light-bolt11-decoder; for
 encoding/signing invoices, the bitcoinjs `bolt11` package.
@@ -44,7 +44,7 @@ npm install farrier-kit
   matches (default 'bc'/mainnet), not expired, and description_hash matches the
   metadata when an h tag is present. SSRF guard: HTTPS-only, credential-free,
   rejects localhost/.local/.internal and private/reserved IP literals (IPv4 and
-  normalised IPv6 — mapped/NAT64/6to4/Teredo/ULA/link-local/multicast), refuses
+  normalised IPv6: mapped/NAT64/6to4/Teredo/ULA/link-local/multicast), refuses
   redirects, caps response size. The guard classifies IP LITERALS only; a
   hostname resolving to a private IP needs a server-side urlGuard (README
   recipe). verifyLud21({verifyUrl, paymentHashHex?}) -> {settled, preimage,

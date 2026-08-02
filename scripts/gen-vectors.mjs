@@ -148,8 +148,8 @@ const errorInvoices = [
 ]
 
 const bolt11Vectors = {
-  description: 'BOLT-11 invoice decoding. amountMsats is a decimal string (may exceed 2^53) or null when amountless. Expected values for valid invoices are computed with light-bolt11-decoder; error cases assert the decoder rejects. syntheticUnsigned invoices carry a zero signature — a signature-verifying decoder must disable verification to test them.',
-  tiers: { 1: 'MUST — universal correctness every conformant decoder matches', 2: 'SHOULD — farrier-kit defensive policy; match for security parity' },
+  description: 'BOLT-11 invoice decoding. amountMsats is a decimal string (may exceed 2^53) or null when amountless. Expected values for valid invoices are computed with light-bolt11-decoder; error cases assert the decoder rejects. syntheticUnsigned invoices carry a zero signature, a signature-verifying decoder must disable verification to test them.',
+  tiers: { 1: 'MUST, universal correctness every conformant decoder matches', 2: 'SHOULD, farrier-kit defensive policy; match for security parity' },
   valid: validInvoices.map((v) => ({
     name: v.name,
     tier: v.tier,
@@ -201,7 +201,7 @@ const lightningAddressVectors = {
 // A security-critical decision table: is this URL-normalised host a private or
 // reserved IP literal? Kotlin/Swift ports MUST reproduce this to keep parity.
 const ssrfVectors = {
-  description: 'isPrivateIpLiteral(host) — host is already URL-normalised (what URL.hostname yields). true = private/reserved (block). Tier-2 security parity table.',
+  description: 'isPrivateIpLiteral(host), host is already URL-normalised (what URL.hostname yields). true = private/reserved (block). Tier-2 security parity table.',
   private: [
     '10.0.0.1', '127.0.0.1', '169.254.169.254', '172.16.0.1', '172.31.255.255',
     '192.168.1.1', '100.64.0.1', '0.0.0.0', '192.0.0.1', '198.18.0.1', '192.88.99.1',
@@ -210,7 +210,7 @@ const ssrfVectors = {
     '2001::1', '::ffff:127.0.0.1', '::ffff:169.254.169.254', '64:ff9b::7f00:1', '2002:7f00:1::',
   ],
   public: ['1.1.1.1', '8.8.8.8', '172.32.0.1', '100.128.0.1', '2600:9000::1', '::ffff:8.8.8.8', '2002:808:808::'],
-  note: 'A hostname that RESOLVES to a private IP is NOT covered here — that needs a DNS-resolving guard in the consuming app (see README).',
+  note: 'A hostname that RESOLVES to a private IP is NOT covered here, that needs a DNS-resolving guard in the consuming app (see README).',
 }
 
 // ---- description-hash (LUD-06 / NIP-57) ------------------------------------

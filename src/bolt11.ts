@@ -1,5 +1,5 @@
 // BOLT-11 invoice decoding: the read-only fields a payer or verifier needs
-// before and after money moves. No signature recovery, no route hints — a
+// before and after money moves. No signature recovery, no route hints, a
 // payer's wallet does that; this answers "what does this invoice commit to?"
 //
 // Layout after bech32: 7 words of timestamp, tagged fields
@@ -29,7 +29,7 @@ export interface DecodedBolt11 {
   amountMsats: bigint | null
   /**
    * Whole-satoshi amount when amountMsats divides exactly by 1000, otherwise
-   * null (never silently floored — use msatsToSatsFloor if you want that).
+   * null (never silently floored, use msatsToSatsFloor if you want that).
    */
   amountSats: number | null
   paymentHashHex: string
@@ -58,7 +58,7 @@ function fail(code: string, message: string): never {
 
 function wordsToNumber(words: number[]): number {
   // A numeric field wider than 13 words (ceil(64/5)) exceeds uint64 and, past
-  // ~11 words, Number precision — lnd rejects >13 outright. Refuse rather than
+  // ~11 words, Number precision, lnd rejects >13 outright. Refuse rather than
   // silently saturate to Infinity or lose precision (expiry/cltv footgun).
   if (words.length > 13) fail('BAD_TAG', 'numeric tag field too long')
   let n = 0
@@ -265,14 +265,14 @@ export interface CommitmentVerdict {
 
 /**
  * The payer's pre-payment check: does this invoice commit to the expected
- * payment_hash — AND, when given, the expected amount and network?
+ * payment_hash, AND, when given, the expected amount and network?
  *
  * The payment_hash alone is NOT enough: the payee picks the preimage, so they
  * can mint a second invoice with the same hash and any amount. Pass
  * `expectedMsats` (and rely on the default `network: 'bc'`) whenever real money
  * is about to move. Opaque invoices cannot be pre-verified; `requireDecodable`
  * must stay true in that case so an unverifiable invoice refuses rather than
- * pays — and note a deferral returns `ok:true` only for post-hoc detection, so
+ * pays, and note a deferral returns `ok:true` only for post-hoc detection, so
  * never treat `ok:true, verified:false` as "safe to pay".
  */
 export function verifyInvoiceCommitment({
@@ -308,7 +308,7 @@ export function verifyInvoiceCommitment({
   if (expectedMsats !== undefined) {
     if (typeof expectedMsats === 'number' && !Number.isSafeInteger(expectedMsats)) {
       // NaN/Infinity/fractional: return a verdict (fail closed) rather than
-      // throwing a raw RangeError from BigInt() — this is an exact payment gate.
+      // throwing a raw RangeError from BigInt(), this is an exact payment gate.
       return { ok: false, reason: 'expectedMsats must be a safe integer', amountMsats: decoded.amountMsats, network: decoded.network }
     }
     const want = typeof expectedMsats === 'bigint' ? expectedMsats : BigInt(expectedMsats)

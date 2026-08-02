@@ -1,8 +1,8 @@
 {
-  "description": "BOLT-11 invoice decoding. amountMsats is a decimal string (may exceed 2^53) or null when amountless. Expected values for valid invoices are computed with light-bolt11-decoder; error cases assert the decoder rejects. syntheticUnsigned invoices carry a zero signature — a signature-verifying decoder must disable verification to test them.",
+  "description": "BOLT-11 invoice decoding. amountMsats is a decimal string (may exceed 2^53) or null when amountless. Expected values for valid invoices are computed with light-bolt11-decoder; error cases assert the decoder rejects. syntheticUnsigned invoices carry a zero signature, a signature-verifying decoder must disable verification to test them.",
   "tiers": {
-    "1": "MUST — universal correctness every conformant decoder matches",
-    "2": "SHOULD — farrier-kit defensive policy; match for security parity"
+    "1": "MUST, universal correctness every conformant decoder matches",
+    "2": "SHOULD, farrier-kit defensive policy; match for security parity"
   },
   "valid": [
     {

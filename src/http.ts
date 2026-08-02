@@ -1,5 +1,5 @@
 // fetch with a hard timeout and JSON handling. Some fetch implementations
-// (node-fetch@2 among them) have NO default timeout — a hung upstream would
+// (node-fetch@2 among them) have NO default timeout, a hung upstream would
 // otherwise hold its caller open forever.
 
 export const DEFAULT_TIMEOUT_MS = 8000
@@ -15,7 +15,7 @@ export interface FetchJsonOptions {
   /** Objects are JSON-serialised and content-type set, strings pass through. */
   body?: unknown
   /**
-   * Redirect handling. Defaults to 'manual' — a safe default for a payments
+   * Redirect handling. Defaults to 'manual', a safe default for a payments
    * util, so a public host cannot 3xx-bounce the request inward. Pass 'follow'
    * to opt into redirects.
    */
@@ -64,7 +64,7 @@ async function readCappedJson<T>(response: Response, maxBytes: number, host: str
       throw err
     }
   } else if (body && typeof (body as AsyncIterable<Uint8Array>)[Symbol.asyncIterator] === 'function') {
-    // Node Readable (node-fetch@2) — async-iterable, no getReader. Without this
+    // Node Readable (node-fetch@2), async-iterable, no getReader. Without this
     // the cap was bypassable: an unbounded chunked body with no content-length.
     const iterable = body as AsyncIterable<Uint8Array>
     for await (const chunk of iterable) {

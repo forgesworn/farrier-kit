@@ -1,5 +1,5 @@
 {
-  "description": "isPrivateIpLiteral(host) — host is already URL-normalised (what URL.hostname yields). true = private/reserved (block). Tier-2 security parity table.",
+  "description": "isPrivateIpLiteral(host), host is already URL-normalised (what URL.hostname yields). true = private/reserved (block). Tier-2 security parity table.",
   "private": [
     "10.0.0.1",
     "127.0.0.1",
@@ -37,5 +37,5 @@
     "::ffff:8.8.8.8",
     "2002:808:808::"
   ],
-  "note": "A hostname that RESOLVES to a private IP is NOT covered here — that needs a DNS-resolving guard in the consuming app (see README)."
+  "note": "A hostname that RESOLVES to a private IP is NOT covered here, that needs a DNS-resolving guard in the consuming app (see README)."
 }

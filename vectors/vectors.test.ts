@@ -1,6 +1,6 @@
 // Conformance harness: assert farrier-kit reproduces every frozen vector in
 // vectors/*.json. These JSON files are the language-neutral contract a Kotlin,
-// Swift or Rust port validates against — this test proves the reference TS
+// Swift or Rust port validates against, this test proves the reference TS
 // implementation still honours them, so CI fails the instant it drifts.
 //
 // Regenerate the vectors (from independent oracles) with:
@@ -88,7 +88,7 @@ describe('conformance: vectors/ssrf.json', () => {
 })
 
 describe('conformance: vectors/description-hash.json', () => {
-  // description_hash = SHA-256(utf8(input)) — LUD-06 metadata or a NIP-57 zap
+  // description_hash = SHA-256(utf8(input)), LUD-06 metadata or a NIP-57 zap
   // request. This is what resolveLnurlPay checks the invoice's h tag against.
   for (const v of load('description-hash.json').vectors) {
     it(`${v.kind}`, () => {

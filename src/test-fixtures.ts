@@ -1,6 +1,6 @@
 // Shared test-only fixtures: synthesise checksum-valid BOLT-11 invoices.
-// Signatures are zeros — neither this decoder nor light-bolt11-decoder
-// verifies them, and zeros keep fixtures deterministic.
+// Signatures are zeros. Neither this decoder nor light-bolt11-decoder verifies
+// them, and zeros keep fixtures deterministic.
 
 import { bech32Encode, convertBits } from './bech32.js'
 

@@ -76,7 +76,7 @@ export function bech32Decode(str: string, maxLength = 8192): Bech32Decoded | nul
 
 /**
  * Regroup bits between word sizes (e.g. 8-bit bytes <-> 5-bit bech32 words).
- * With pad=false, leftover bits must be shorter than a source word and zero —
+ * With pad=false, leftover bits must be shorter than a source word and zero,
  * the strict mode BIP-173 requires for fixed-size fields.
  */
 export function convertBits(data: number[], from: number, to: number, pad: boolean): number[] | null {

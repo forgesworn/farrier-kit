@@ -128,7 +128,7 @@ describe('decodeBolt11', () => {
   })
 
   it('honours first-wins for a malformed s/h tag (no later-duplicate override)', () => {
-    // First h tag malformed (51 words); a second must NOT win — spec first-wins.
+    // First h tag malformed (51 words); a second must NOT win, spec first-wins.
     const inv = buildInvoice('lnbc1u', [
       P,
       tag(23, Array(51).fill(1)),

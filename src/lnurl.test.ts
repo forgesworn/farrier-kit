@@ -112,8 +112,8 @@ describe('URL guard (SSRF)', () => {
     for (const pub of ['1.1.1.1', '8.8.8.8', '172.32.0.1', '100.128.0.1', '2600:9000::1', '::ffff:8.8.8.8']) {
       expect(isPrivateIpLiteral(pub), pub).toBe(false)
     }
-    // 999.1.1.1 is not a valid IPv4 literal, so it is not classified as one —
-    // it flows to DNS/urlGuard rather than being force-blocked here.
+    // 999.1.1.1 is not a valid IPv4 literal, so it is not classified as one.
+    // It flows to DNS/urlGuard rather than being force-blocked here.
     expect(isPrivateIpLiteral('999.1.1.1')).toBe(false)
     expect(() => assertResolvableUrl('https://192.168.1.1/x')).toThrow(/private or reserved/)
     expect(() => assertResolvableUrl('https://[::1]/x')).toThrow(/private or reserved/)
@@ -299,7 +299,7 @@ describe('resolveLnurlPay', () => {
     const result = await resolveLnurlPay({ address: 'bob@w.example.net', amountSats: 250_000, nostr: zapReq, fetchImpl: okFetch.fetchImpl, nowSeconds: () => INVOICE_TIME + 100 })
     expect(result.zap).toBe(true)
     expect(result.bolt11).toBe(good)
-    // Non-compliant zap: invoice commits to sha256(metadata) instead — reject.
+    // Non-compliant zap: invoice commits to sha256(metadata) instead, reject.
     const wrong = buildInvoice('lnbc2500u', [
       tag(1, words52(HASH)),
       tag(23, words52(bytesToHex(sha256(new TextEncoder().encode(meta.metadata))))),

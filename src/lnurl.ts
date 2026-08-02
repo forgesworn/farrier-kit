@@ -71,13 +71,13 @@ export function lnurlPayUrl({ name, domain }: { name: string; domain: string }):
 // ---------------------------------------------------------------------------
 // URL guarding (SSRF).
 //
-// IMPORTANT — scope of this guard. It classifies IP *literals* and blocks
+// IMPORTANT, scope of this guard. It classifies IP *literals* and blocks
 // localhost/HTTPS/credential violations. It CANNOT, on its own, stop a
 // hostname that RESOLVES to a private address (e.g. an attacker A-record
 // pointing at 10.0.0.5, or a rebinding TOCTOU). Browsers cannot resolve DNS,
 // so a fully-safe default is impossible in the core. Server callers that
 // accept untrusted addresses MUST pass `urlGuard` doing DNS resolution +
-// per-address pinning — see the README recipe. Without it, treat resolution
+// per-address pinning, see the README recipe. Without it, treat resolution
 // of attacker-controlled addresses as blind-SSRF-capable.
 
 // Parse an IPv4 string into 4 octets, or null. Only strict dotted-decimal;
@@ -154,7 +154,7 @@ function isPrivateIpv4(octets: number[]): boolean {
 
 function isPrivateIpv6(h: number[]): boolean {
   const embedsV4 = (start: number) => isPrivateIpv4([h[start] >> 8, h[start] & 0xff, h[start + 1] >> 8, h[start + 1] & 0xff])
-  // ::/96 — covers ::, ::1, IPv4-compatible, ::ffff:v4 (v4-mapped), ::ffff:0:v4.
+  // ::/96, covers ::, ::1, IPv4-compatible, ::ffff:v4 (v4-mapped), ::ffff:0:v4.
   if (h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0 && (h[5] === 0 || h[5] === 0xffff)) {
     if (h[6] === 0 && h[7] === 0) return true // :: unspecified
     if (h[5] === 0 && h[6] === 0 && h[7] === 1) return true // ::1 loopback
@@ -179,7 +179,7 @@ function isPrivateIpv6(h: number[]): boolean {
  * the WHATWG URL parser canonicalises decimal/octal/hex IPv4 and compressed
  * IPv6 before a hostname exists. Do NOT call this on a raw, un-normalised
  * string (a config value, a header) and expect it to catch `0x7f000001` or
- * `2130706433` — it will not. Feed such input through `new URL()` first.
+ * `2130706433`, it will not. Feed such input through `new URL()` first.
  */
 export function isPrivateIpLiteral(hostname: string): boolean {
   const host = stripHost(hostname)
@@ -206,7 +206,7 @@ const LOCAL_EXACT = new Set(['localhost'])
 
 /**
  * HTTPS-only, public-host, credential-free URL check. Throws LnurlError on
- * violation. Classifies IP literals only — see the module note on `urlGuard`
+ * violation. Classifies IP literals only, see the module note on `urlGuard`
  * for hostnames that resolve inward.
  */
 export function assertResolvableUrl(input: string | URL): URL {
@@ -259,13 +259,13 @@ export interface ResolveLnurlPayOptions {
   /**
    * Extra async URL check (e.g. server-side DNS resolution pinning) applied
    * to every fetched URL after the built-in guard. REQUIRED for safe handling
-   * of untrusted addresses on a server — the built-in guard classifies IP
+   * of untrusted addresses on a server, the built-in guard classifies IP
    * literals only, not hostnames that resolve inward. See the README recipe.
    */
   urlGuard?: (url: URL) => void | Promise<void>
   /**
    * Reject an invoice whose network does not match. Defaults to 'bc'
-   * (mainnet) — the safe default for a money path. Pass null to accept any
+   * (mainnet), the safe default for a money path. Pass null to accept any
    * network (dev/regtest).
    */
   network?: Bolt11Network | null
@@ -322,7 +322,7 @@ function safeSendable(value: unknown): number {
 
 /**
  * Truncate a comment to the service's LUD-12 limit, counted in Unicode code
- * points (LUD-12 measures characters, not bytes — a byte budget over-truncates
+ * points (LUD-12 measures characters, not bytes, a byte budget over-truncates
  * multibyte text), never splitting a code point. COMMENT_MAX is a separate
  * local hard ceiling against an absurd service-set limit.
  */
@@ -366,7 +366,7 @@ async function guardedFetchJson(
 /**
  * Resolve a Lightning Address (or direct LUD-06 URL) to a bolt11 invoice for
  * an exact amount. The returned invoice has been decoded and its amount
- * verified to equal the request — a mismatched or amountless invoice throws.
+ * verified to equal the request, a mismatched or amountless invoice throws.
  */
 export async function resolveLnurlPay(opts: ResolveLnurlPayOptions): Promise<ResolvedLnurlPay> {
   const msats = toMsats(opts)
@@ -586,7 +586,7 @@ export function createCapabilityProbe({
           nostrPubkey: '',
         }
       }
-      // FIFO eviction once full — Map preserves insertion order.
+      // FIFO eviction once full, Map preserves insertion order.
       if (!cache.has(parsed.address) && cache.size >= maxEntries) {
         const oldest = cache.keys().next().value
         if (oldest !== undefined) cache.delete(oldest)
