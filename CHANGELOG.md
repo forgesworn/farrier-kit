@@ -4,6 +4,20 @@ All notable changes to farrier-kit are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-08-02
+
+First release published through forgesworn/anvil (OIDC trusted publishing, SLSA
+provenance, reproducible-build attestation).
+
+### Added
+
+- `./package.json` is now an exported subpath, so tooling and
+  `require('farrier-kit/package.json')` resolve.
+
+### Changed
+
+- CI actions pinned to commit SHAs, and anvil's action-pin audit runs strict.
+
 ## [1.0.0] - 2026-08-02
 
 First release: the audited verification core.
@@ -38,4 +52,5 @@ First release: the audited verification core.
   node-fetch-style bodies, and a NIP-57 zap description-hash binding, along with
   a set of bolt11 parsing footguns.
 
+[1.0.1]: https://github.com/forgesworn/farrier-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/forgesworn/farrier-kit/releases/tag/v1.0.0

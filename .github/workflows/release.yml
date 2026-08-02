@@ -32,7 +32,8 @@ jobs:
     with:
       tag: ${{ inputs.tag || '' }}
       vector-test-command: npm run test:vectors
-      # Warn-only to start. Flip both to strict once the ci.yml actions are
-      # SHA-pinned and the tsup build is confirmed byte-reproducible.
-      strict-action-pins: false
+      # ci.yml actions are SHA-pinned, so the pin audit runs strict.
+      strict-action-pins: true
+      # Warn-only until this first anvil run confirms the tsup build is
+      # byte-identical across both runners; flip to strict for the next release.
       reproducibility-mode: warn
