@@ -32,4 +32,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: npx --yes semantic-release
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            echo "::notice::NPM_TOKEN not configured; skipping publish (add the secret to enable releases)"
+            exit 0
+          fi
+          npx --yes semantic-release
