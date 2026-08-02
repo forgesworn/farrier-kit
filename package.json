@@ -27,6 +27,11 @@
       "types": "./dist/http.d.ts",
       "import": "./dist/http.js",
       "require": "./dist/http.cjs"
+    },
+    "./lnurl": {
+      "types": "./dist/lnurl.d.ts",
+      "import": "./dist/lnurl.js",
+      "require": "./dist/lnurl.cjs"
     }
   },
   "files": [

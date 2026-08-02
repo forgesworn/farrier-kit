@@ -22,3 +22,22 @@ export {
 } from './preimage.js'
 
 export { fetchJson, HttpError, DEFAULT_TIMEOUT_MS, type FetchJsonOptions } from './http.js'
+
+export {
+  isLightningAddress,
+  parseLightningAddress,
+  lnurlPayUrl,
+  resolveLnurlPay,
+  verifyLud21,
+  createCapabilityProbe,
+  assertResolvableUrl,
+  isPrivateIpLiteral,
+  LnurlError,
+  type LightningAddress,
+  type LnurlPayMetadata,
+  type ResolveLnurlPayOptions,
+  type ResolvedLnurlPay,
+  type Lud21Result,
+  type LnurlPayCapability,
+  type CapabilityProbe,
+} from './lnurl.js'

@@ -12,6 +12,8 @@ export interface FetchJsonOptions {
   headers?: Record<string, string>
   /** Objects are JSON-serialised and content-type set, strings pass through. */
   body?: unknown
+  /** Pass 'manual' to refuse redirects (SSRF: a public host must not bounce inward). */
+  redirect?: RequestRedirect
 }
 
 function hostOf(url: string): string {
@@ -43,6 +45,7 @@ export async function fetchJson<T = unknown>(url: string, options: FetchJsonOpti
   try {
     const headers: Record<string, string> = { accept: 'application/json', ...(options.headers ?? {}) }
     const init: RequestInit = { method: options.method ?? 'GET', headers, signal: controller.signal }
+    if (options.redirect !== undefined) init.redirect = options.redirect
     if (options.body !== undefined) {
       init.body = typeof options.body === 'string' ? options.body : JSON.stringify(options.body)
       const hasContentType = Object.keys(headers).some((h) => h.toLowerCase() === 'content-type')

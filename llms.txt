@@ -25,8 +25,17 @@ npm install farrier-kit
 - farrier-kit/preimage: isValidHex64, generatePreimage(entropy?),
   computePaymentHash(preimage), verifyPreimage(preimage, expectedHash)
   (constant-time), explainPreimage({preimage, paymentHash}) -> {ok, reason?}.
+- farrier-kit/lnurl: parseLightningAddress / isLightningAddress / lnurlPayUrl;
+  resolveLnurlPay({address|lnurlpUrl, amountSats|amountMsats, comment?, nostr?,
+  fetchImpl?, urlGuard?}) -> {bolt11, paymentHashHex, verifyUrl?, zap, metadata}
+  (LUD-06/16; invoice amount verified to equal the request; HTTPS-only public
+  hosts, private-IP literals rejected, redirects refused);
+  verifyLud21({verifyUrl, paymentHashHex?}) -> {settled, preimage, verified}
+  (verified=true only on cryptographic preimage match);
+  createCapabilityProbe(...) -> TTL-cached metadata-only probing;
+  assertResolvableUrl, isPrivateIpLiteral, LnurlError.
 - farrier-kit/http: fetchJson(url, {fetchImpl?, timeoutMs?, method?, headers?,
-  body?}), HttpError, DEFAULT_TIMEOUT_MS.
+  body?, redirect?}), HttpError, DEFAULT_TIMEOUT_MS.
 
 ## Key facts
 

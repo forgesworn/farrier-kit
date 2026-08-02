@@ -8,11 +8,15 @@ for the road; this kit shoes your payment paths.
   heavyweight node library just to read two fields.
 - **`farrier-kit/preimage`** — preimage ↔ payment_hash: generate, hash, verify
   (constant-time), explain.
+- **`farrier-kit/lnurl`** — Lightning Address → invoice (LUD-06/16), LUD-21
+  verify with preimage cross-check, capability probing with a TTL cache, and
+  SSRF guarding (HTTPS-only, public hosts, private-IP rejection, manual
+  redirects, injectable DNS-pinning hook).
 - **`farrier-kit/http`** — `fetchJson` with a hard timeout, because some fetch
   implementations will happily hang forever.
 
-Coming next (see roadmap below): `/lnurl` (LUD-06/16/21 Lightning Address
-resolution), `/nwc` (NIP-47 client + wallet service), `/fiat`, `/handles`.
+Coming next (see roadmap below): `/nwc` (NIP-47 client + wallet service),
+`/fiat`, `/handles`.
 
 ## Design rules
 
@@ -56,6 +60,23 @@ verifyPreimage(revealed, paymentHash) // constant-time true/false
 ```
 
 ```js
+import { resolveLnurlPay, verifyLud21 } from 'farrier-kit/lnurl'
+
+// Lightning Address -> bolt11 for an exact amount. The returned invoice has
+// been decoded and its amount verified to equal the request; a mismatched or
+// amountless invoice throws. LUD-12 comments truncate to commentAllowed;
+// NIP-57 zap requests attach when the service supports them.
+const paid = await resolveLnurlPay({ address: 'alice@wallet.example.com', amountSats: 21000 })
+paid.bolt11         // hand to any wallet
+paid.paymentHashHex // verify the revealed preimage against this
+paid.verifyUrl      // LUD-21, when offered
+
+// Later: LUD-21 settlement check. verified=true only when the returned
+// preimage cryptographically matches — settled alone is the service's word.
+const status = await verifyLud21({ verifyUrl: paid.verifyUrl, paymentHashHex: paid.paymentHashHex })
+```
+
+```js
 import { fetchJson } from 'farrier-kit/http'
 
 const body = await fetchJson('https://example.com/.well-known/lnurlp/alice', {
@@ -82,7 +103,7 @@ settlement verification (LNURL-pay + preimage proof).
 | Module | Status |
 |---|---|
 | `/bolt11`, `/preimage`, `/http` | shipped |
-| `/lnurl` — LUD-06/16 resolution, LUD-21 verify, capability probing | next |
+| `/lnurl` — LUD-06/16 resolution, LUD-21 verify, capability probing | shipped |
 | `/nwc` — NIP-47 client (both transport patterns) + wallet-service harness | planned |
 | `/nostr-crypto` — NIP-04/NIP-44 v2 on @noble, official-vector CI | planned |
 | `/fiat` — BTC price oracle, ISO-4217 minor units, formatting | planned |

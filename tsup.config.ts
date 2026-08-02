@@ -6,6 +6,7 @@ export default defineConfig({
     bolt11: 'src/bolt11.ts',
     preimage: 'src/preimage.ts',
     http: 'src/http.ts',
+    lnurl: 'src/lnurl.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,
