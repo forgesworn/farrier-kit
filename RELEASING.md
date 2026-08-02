@@ -72,12 +72,12 @@ Tests, the frozen-vector gate (`npm run test:vectors`), a runtime-only
 disk, a secret scan over the pack set, an action-pin audit, and a reproducible
 build across two runners. A failure blocks the publish.
 
-## Hardening follow-ups
+## Hardening status
 
-Two settings in `release.yml` start in warn-only mode and should flip to strict
-once verified:
+Both gates in `release.yml` run strict as of 1.0.1:
 
-- `strict-action-pins: false`. Pin the `uses:` refs in `ci.yml` to commit SHAs,
-  then set this to `true`.
-- `reproducibility-mode: warn`. Confirm the tsup build is byte-identical across
-  two runners, then set this to `strict`.
+- `strict-action-pins: true`. The `uses:` refs in `ci.yml` are pinned to commit
+  SHAs, so any unpinned action fails the release.
+- `reproducibility-mode: strict`. The 1.0.1 release confirmed the tsup build is
+  byte-identical across two independent runners, so a mismatch now blocks the
+  publish.

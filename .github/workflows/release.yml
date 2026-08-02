@@ -34,6 +34,6 @@ jobs:
       vector-test-command: npm run test:vectors
       # ci.yml actions are SHA-pinned, so the pin audit runs strict.
       strict-action-pins: true
-      # Warn-only until this first anvil run confirms the tsup build is
-      # byte-identical across both runners; flip to strict for the next release.
-      reproducibility-mode: warn
+      # The 1.0.1 run confirmed the tsup build is byte-identical across two
+      # independent runners, so a mismatch now blocks the release.
+      reproducibility-mode: strict
