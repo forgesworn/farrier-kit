@@ -1,0 +1,15 @@
+{
+  "description": "The invoice description_hash (h tag) binds the invoice. LUD-06: sha256(metadata string). NIP-57 zap: sha256(the signed zap request). Computed with node:crypto.",
+  "vectors": [
+    {
+      "kind": "lud06-metadata",
+      "input": "[[\"text/plain\",\"coffee\"]]",
+      "descriptionHashHex": "70d4e54e5da21b0291ad718add5db833426982f70ed52b7acee6f0ad71d4d7fb"
+    },
+    {
+      "kind": "nip57-zap-request",
+      "input": "{\"kind\":9734,\"tags\":[],\"content\":\"\"}",
+      "descriptionHashHex": "f39c043e61df778123dd60e7ebbb15f3110858a337d8b8917b5a608265f147c5"
+    }
+  ]
+}

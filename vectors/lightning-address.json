@@ -1,0 +1,49 @@
+{
+  "description": "Lightning Address (LUD-16) parse + canonicalisation. Both name and domain lowercase; a public domain required.",
+  "valid": [
+    {
+      "input": "alice@wallet.example.com",
+      "name": "alice",
+      "domain": "wallet.example.com"
+    },
+    {
+      "input": "Alice@Wallet.Example.COM",
+      "name": "alice",
+      "domain": "wallet.example.com",
+      "note": "lowercased"
+    },
+    {
+      "input": " bob@w.example.net ",
+      "name": "bob",
+      "domain": "w.example.net",
+      "note": "trimmed"
+    },
+    {
+      "input": "2547001122@bitcoin.co.ke",
+      "name": "2547001122",
+      "domain": "bitcoin.co.ke",
+      "note": "phone-derived (Tando)"
+    }
+  ],
+  "invalid": [
+    "nope",
+    "a@b",
+    "a b@x.com",
+    "alice@localhost",
+    "alice@dev.local",
+    ""
+  ],
+  "lnurlpUrl": [
+    {
+      "name": "alice",
+      "domain": "wallet.example.com",
+      "url": "https://wallet.example.com/.well-known/lnurlp/alice"
+    },
+    {
+      "name": "a b",
+      "domain": "x.co",
+      "url": "https://x.co/.well-known/lnurlp/a%20b",
+      "note": "name percent-encoded"
+    }
+  ]
+}

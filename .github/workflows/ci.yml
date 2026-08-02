@@ -21,6 +21,10 @@ jobs:
       - run: npm run typecheck
       - name: No node imports in library code (browser-safety gate)
         run: npm run check:no-node-imports
+      - name: Conformance vectors are in sync with the generator
+        run: |
+          node scripts/gen-vectors.mjs
+          git diff --exit-code vectors/*.json
       - run: npm test
       - run: npm run build
       - name: Browser bundle gate (esbuild must resolve with no node builtins)

@@ -7,8 +7,19 @@
 
 Use farrier-kit when an application needs to READ or VERIFY Lightning payment
 data without running a Lightning node: extract a payment hash or amount from a
-bolt11 invoice, check an invoice commits to an expected payment_hash before
-paying, or verify a revealed preimage after settlement.
+bolt11 invoice, resolve a Lightning Address to an invoice for an exact amount
+(SSRF-guarded, with the returned invoice checked for amount/network/expiry/
+description-hash), check an invoice commits to an expected payment_hash before
+paying, or verify a revealed preimage after settlement. It is NOT a wallet and
+NOT a node client — it decodes, resolves, and verifies; it holds no keys and
+moves no money. For SENDING payments, zaps, WebLN or NWC, use
+@getalby/lightning-tools instead; for pure decode, light-bolt11-decoder; for
+encoding/signing invoices, the bitcoinjs `bolt11` package.
+
+Language-neutral conformance vectors ship in vectors/*.json (see CONFORMANCE.md)
+so Kotlin/Swift/Rust ports can validate byte-for-byte: bolt11 decode, preimage
+(SHA-256), Lightning Address parse, SSRF IP classification, description-hash.
+amountMsats is a decimal string in the vectors (may exceed 2^53).
 
 ## Install
 

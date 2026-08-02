@@ -1,0 +1,51 @@
+{
+  "description": "payment_hash = SHA-256(preimage bytes). verify pairs assert a preimage matches (or not) a payment hash. Hashes computed with node:crypto.",
+  "hash": [
+    {
+      "preimage": "0000000000000000000000000000000000000000000000000000000000000000",
+      "paymentHash": "66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925"
+    },
+    {
+      "preimage": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "paymentHash": "af9613760f72635fbdb44a5a0a63c39f12af30f950a6ee5c971be188e89c4051"
+    },
+    {
+      "preimage": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "paymentHash": "52fe6094743bfd4f9be4321d98adc7e23c1ab622b0ba830e271d1ee1cbfd7850"
+    },
+    {
+      "preimage": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "paymentHash": "4884fdaafea47c29fea7159d0daddd9c085d6200e1359e85bb81736af6b7c837"
+    }
+  ],
+  "verify": [
+    {
+      "preimage": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "paymentHash": "52fe6094743bfd4f9be4321d98adc7e23c1ab622b0ba830e271d1ee1cbfd7850",
+      "valid": true
+    },
+    {
+      "preimage": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "paymentHash": "f14dfc875b1ae75784112f7a93a97a236867a656502ffe4d7cefab60cfe7aed2",
+      "valid": false
+    },
+    {
+      "preimage": "A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1A1",
+      "paymentHash": "52FE6094743BFD4F9BE4321D98ADC7E23C1AB622B0BA830E271D1EE1CBFD7850",
+      "valid": true,
+      "note": "case-insensitive"
+    },
+    {
+      "preimage": "nothex",
+      "paymentHash": "52fe6094743bfd4f9be4321d98adc7e23c1ab622b0ba830e271d1ee1cbfd7850",
+      "valid": false,
+      "note": "malformed preimage"
+    },
+    {
+      "preimage": "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1",
+      "paymentHash": "52fe6094743bfd4f9be4321d98adc7e23c1ab622b0ba830e271d1ee1cbfd7850",
+      "valid": false,
+      "note": "wrong length"
+    }
+  ]
+}
