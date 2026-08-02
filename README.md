@@ -260,14 +260,14 @@ safely verifying what someone handed you.
 
 ## Roadmap
 
-| Module | Status |
-|--------|--------|
-| `/bolt11`, `/preimage`, `/lnurl`, `/http` | shipped |
-| Conformance vectors + porting guide | shipped |
-| `/nwc` — NIP-47 client (both transport patterns) + wallet-service harness | planned |
-| `/nostr-crypto` — NIP-04 / NIP-44 v2 on @noble, official-vector CI | planned |
-| `/fiat` — BTC price oracle, ISO-4217 minor units, formatting | planned |
-| `/handles` — Lightning Address / MSISDN validation + PII classification | planned |
+Shipped: the v1.0 core (`/bolt11`, `/preimage`, `/lnurl`, `/http`), an
+independent security audit, and language-neutral conformance vectors. Next: a
+Kotlin port validated against the vectors (identical verification on native
+mobile), then `/nwc` (NIP-47 client + wallet-service harness), `/nostr-crypto`,
+`/fiat` and `/handles`. New modules are additive minor releases.
+
+See **[ROADMAP.md](./ROADMAP.md)** for the full plan and **[RELEASING.md](./RELEASING.md)**
+for how releases are cut.
 
 ## Support
 

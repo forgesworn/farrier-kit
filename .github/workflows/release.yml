@@ -3,6 +3,7 @@ name: Release
 on:
   push:
     branches: [main]
+  workflow_dispatch: {} # lets you trigger the first release from the Actions tab
 
 permissions:
   contents: write
@@ -25,6 +26,10 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run check:no-node-imports
+      - name: Conformance vectors are in sync with the generator
+        run: |
+          node scripts/gen-vectors.mjs
+          git diff --exit-code vectors/*.json
       - run: npm test
       - run: npm run build
       - run: npm run check:browser-bundle
