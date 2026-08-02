@@ -82,7 +82,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "esbuild": "^0.25.0",
+    "esbuild": "^0.28.0",
     "light-bolt11-decoder": "3.2.0",
     "tsup": "^8.3.0",
     "typescript": "^5.7.0",
