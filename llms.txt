@@ -54,6 +54,13 @@ npm install farrier-kit
   LnurlError.
 - farrier-kit/http: fetchJson(url, {fetchImpl?, timeoutMs?, method?, headers?,
   body?, redirect?}), HttpError, DEFAULT_TIMEOUT_MS.
+- farrier-kit/node: NODE-ONLY (uses node: builtins, not imported by the root, so
+  the browser core stays clean). createPinnedFetch({allowPrivate?, resolve?}) ->
+  a fetchImpl for resolveLnurlPay/verifyLud21/createCapabilityProbe that closes
+  the DNS-rebinding window a check-then-fetch urlGuard cannot: resolves the host
+  once, rejects any private/reserved answer (IPv4+IPv6), pins the socket to the
+  approved address (no second lookup), keeps SNI/cert/Host on the hostname, never
+  follows redirects. PinnedFetchError. Server-side only; browsers cannot DNS-pin.
 
 ## Key facts
 

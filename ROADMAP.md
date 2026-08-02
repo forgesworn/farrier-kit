@@ -26,6 +26,7 @@ sit on.
 | `/http`, timeout and size-capped, redirect-safe JSON fetch | done |
 | Independent security review (three reviewers plus Codex) | done |
 | Language-neutral conformance vectors and porting guide | done |
+| `/node`, DNS-pinned fetch for untrusted LNURL resolution (v1.1, rebinding-safe) | done |
 
 ## Next
 
@@ -62,7 +63,9 @@ whole Nostr library just for wallet-connect.
 ## What will not change
 
 - An `@noble`-only runtime core, with no `node:` imports, so the browser and Node
-  run the same code. CI enforces it.
+  run the same code. CI enforces it. The single exception is the optional
+  `/node` entry, which is Node-only by design, gated out of the browser bundle,
+  and never reachable from the root.
 - Safe by default. The strict checks are on unless you turn them off.
 - Every verifiable surface gets conformance vectors. New modules ship with their
   own locked-in, independently-anchored vectors so ports stay in step.

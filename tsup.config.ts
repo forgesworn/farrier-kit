@@ -7,6 +7,9 @@ export default defineConfig({
     preimage: 'src/preimage.ts',
     http: 'src/http.ts',
     lnurl: 'src/lnurl.ts',
+    // Node-only transport (uses node: builtins). Never imported by the root
+    // barrel, so the browser bundle stays free of it.
+    node: 'src/node/index.ts',
   },
   format: ['esm', 'cjs'],
   dts: true,

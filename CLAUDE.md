@@ -18,7 +18,8 @@ src/
   lnurl.ts        LUD-06/16 resolve, LUD-21 verify, SSRF guard, capability probe
   http.ts         fetchJson: timeout + response-size cap + safe redirect default
   bech32.ts       internal BIP-173 (not exported)
-  index.ts        barrel export
+  index.ts        barrel export (browser-safe; never re-exports node/)
+  node/index.ts   NODE-ONLY: createPinnedFetch, DNS-pinned fetch (rebinding-safe)
   test-fixtures.ts  test-only invoice synthesis
   *.test.ts       co-located unit tests
 vectors/
@@ -29,7 +30,17 @@ scripts/
 dist/             dual ESM + CJS via tsup, with .d.ts
 ```
 
-Subpath exports: `.`, `/bolt11`, `/preimage`, `/lnurl`, `/http`, `/package.json`.
+Subpath exports: `.`, `/bolt11`, `/preimage`, `/lnurl`, `/http`, `/node`,
+`/package.json`.
+
+`src/node/` is the one Node-only corner. It may use `node:` builtins, so the
+no-node-imports gate excludes it (`--exclude-dir=node`) and the root barrel must
+never re-export from it. It is out of the conformance-vector contract (it is
+server I/O, not a pure function); a native port implements its own pinning
+against the same IP policy. `createPinnedFetch` closes the DNS-rebinding window
+by being the connection, not a check before one: it resolves once, rejects any
+private answer, and pins the socket to the approved address while keeping SNI,
+cert validation and Host on the hostname.
 
 ## Design constraints (load-bearing, CI-enforced)
 

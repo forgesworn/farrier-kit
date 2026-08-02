@@ -26,6 +26,7 @@ decodes, resolves, and verifies.
 | [`farrier-kit/preimage`](#preimage) | `payment_hash = SHA-256(preimage)`: generate, hash, verify in constant time. |
 | [`farrier-kit/lnurl`](#lnurl) | Lightning Address to invoice (LUD-06/16), LUD-21 verify, capability probing. The fetch is SSRF-guarded and the invoice you get back is checked for amount, network, expiry, and description-hash. |
 | [`farrier-kit/http`](#http) | `fetchJson` with a hard timeout, a response-size cap, and a redirect default that does not bounce you inward. |
+| [`farrier-kit/node`](#node) | Node-only. A DNS-pinned `fetch` for resolving untrusted LNURL hosts on a server: it resolves once, refuses any private answer, and pins the socket to the approved address so a rebinding race cannot swap in an internal one. |
 
 ## Install
 
@@ -175,6 +176,33 @@ const body = await fetchJson('https://example.com/.well-known/lnurlp/alice', {
 the safe choice, since a public host should not be able to 3xx-bounce a request
 inward. Pass `redirect: 'follow'` if you want redirects.
 
+## node
+
+Node-only. `createPinnedFetch` returns a `fetch` you pass as `fetchImpl` to
+`resolveLnurlPay`, `verifyLud21` or `createCapabilityProbe`. It is the server-side
+answer to DNS rebinding (see the SSRF section for why a URL check alone is not
+enough).
+
+```js
+import { createPinnedFetch } from 'farrier-kit/node'
+import { resolveLnurlPay } from 'farrier-kit/lnurl'
+
+const pinnedFetch = createPinnedFetch() // rejects any private/reserved answer
+
+const invoice = await resolveLnurlPay({
+  address: 'alice@example.com',       // untrusted, payee-controlled
+  amountSats: 1000,
+  fetchImpl: pinnedFetch,             // metadata, callback and verify URLs all pinned
+})
+```
+
+It resolves the hostname once, rejects the request if any answer is private,
+loopback, link-local, reserved, documentation-only or multicast, and connects the
+socket to the one approved address by overriding its DNS lookup, so there is no
+second resolution to race. The TLS SNI, certificate check and HTTP Host header
+stay on the original hostname. It never follows redirects. Pass `allowPrivate:
+true` only for local development against regtest or localhost.
+
 ## SSRF: what the guard does and does not do
 
 `resolveLnurlPay` fetches from payee-controlled domains, so it is an SSRF surface.
@@ -186,23 +214,28 @@ site-local, ULA, and multicast.
 
 Here is what the core cannot do on its own. It cannot stop a hostname that
 resolves to a private address, such as an attacker A-record pointing at
-`10.0.0.5`, or a DNS-rebinding race. Browsers cannot resolve DNS, so a safe
-default there is impossible without a Node dependency. On a server that resolves
-untrusted addresses, pass `urlGuard`:
+`10.0.0.5`, or a DNS-rebinding race. Browsers cannot resolve DNS at all, so this
+pinning is a server-only job; a browser should never resolve an untrusted address.
+
+On a server, use `createPinnedFetch` from [`farrier-kit/node`](#node):
 
 ```js
-import { lookup } from 'node:dns/promises'
-import { isPrivateIpLiteral, resolveLnurlPay } from 'farrier-kit/lnurl'
+import { createPinnedFetch } from 'farrier-kit/node'
+import { resolveLnurlPay } from 'farrier-kit/lnurl'
 
-const pinToPublic = async (url) => {
-  const { address } = await lookup(url.hostname)
-  if (isPrivateIpLiteral(address)) throw new Error(`blocked: ${url.hostname} -> ${address}`)
-}
-
-await resolveLnurlPay({ address, amountSats, urlGuard: pinToPublic })
+await resolveLnurlPay({ address, amountSats, fetchImpl: createPinnedFetch() })
 ```
 
-`urlGuard` runs after the built-in checks, on every fetched URL.
+Why not just a `urlGuard` that resolves DNS and checks the address? Because that
+is a check, and the fetch that follows is a separate connection that resolves DNS
+again. Between the two lookups the answer can change: public when you check,
+private when you connect. That gap is DNS rebinding, and a check-then-fetch cannot
+close it. `createPinnedFetch` does, by being the connection: it validates the
+address it is about to use and pins the socket to it.
+
+The `urlGuard` hook still exists for an extra synchronous check on every URL (an
+allowlist, say). It runs after the built-in checks, but it does not replace
+`createPinnedFetch` for rebinding.
 
 ## Conformance and porting (Kotlin, Swift, Rust)
 

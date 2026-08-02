@@ -1,6 +1,6 @@
 {
   "name": "farrier-kit",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Lightning payment primitives that work anywhere: bolt11 decoding, preimage verification, LNURL-pay resolution and timeout-safe JSON fetch. Zero-dependency core on @noble, browser and Node from one codebase.",
   "type": "module",
   "sideEffects": false,
@@ -33,6 +33,11 @@
       "import": "./dist/lnurl.js",
       "require": "./dist/lnurl.cjs"
     },
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "require": "./dist/node.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -48,7 +53,7 @@
     "test": "vitest run",
     "test:vectors": "vitest run vectors/vectors.test.ts",
     "test:watch": "vitest",
-    "check:no-node-imports": "! grep -rEn \"from ['\\\"]node:|require\\(['\\\"]node:\" src --include='*.ts' --exclude='*.test.ts'",
+    "check:no-node-imports": "! grep -rEn \"from ['\\\"]node:|require\\(['\\\"]node:\" src --include='*.ts' --exclude='*.test.ts' --exclude-dir=node",
     "check:browser-bundle": "esbuild dist/index.js --bundle --platform=browser --outfile=/dev/null --log-level=error",
     "vectors": "node scripts/gen-vectors.mjs",
     "prepublishOnly": "npm run typecheck && npm run check:no-node-imports && npm run test && npm run build && npm run check:browser-bundle"

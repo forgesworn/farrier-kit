@@ -4,6 +4,26 @@ All notable changes to farrier-kit are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-02
+
+### Added
+
+- `farrier-kit/node`: a Node-only, DNS-pinned `fetch` for resolving untrusted
+  LNURL and Lightning Address hosts on a server. `createPinnedFetch` returns a
+  `fetchImpl` for `resolveLnurlPay`, `verifyLud21` and `createCapabilityProbe`.
+  It resolves the hostname once, rejects the request if any answer is private,
+  loopback, link-local, reserved, documentation-only or multicast (IPv4 and
+  IPv6), and pins the socket to the approved address by overriding its DNS
+  lookup, so there is no second resolution for a rebinding race to win. The TLS
+  SNI, certificate check and Host header stay on the original hostname, and it
+  never follows redirects. This closes the DNS-rebinding window a check-then-
+  fetch `urlGuard` cannot. Browser and other entries are unchanged.
+
+### Notes
+
+- The `/node` entry is server-side I/O, not part of the language-neutral vector
+  contract; native ports implement their own pinning against the same IP policy.
+
 ## [1.0.1] - 2026-08-02
 
 First release published through forgesworn/anvil (OIDC trusted publishing, SLSA
@@ -52,5 +72,6 @@ First release: the audited verification core.
   node-fetch-style bodies, and a NIP-57 zap description-hash binding, along with
   a set of bolt11 parsing footguns.
 
+[1.1.0]: https://github.com/forgesworn/farrier-kit/releases/tag/v1.1.0
 [1.0.1]: https://github.com/forgesworn/farrier-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/forgesworn/farrier-kit/releases/tag/v1.0.0
