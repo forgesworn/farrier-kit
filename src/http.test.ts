@@ -1,8 +1,34 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_TIMEOUT_MS, fetchJson, HttpError } from './http.js'
+import { DEFAULT_TIMEOUT_MS, fetchJson, HttpError, ResponseTooLargeError } from './http.js'
 
 function okResponse(body: unknown): Response {
   return { ok: true, status: 200, json: async () => body } as unknown as Response
+}
+
+// A Response whose body streams `chunks` (Uint8Array) and reports headers.
+function streamResponse(chunks: Uint8Array[], headers: Record<string, string> = {}): Response {
+  let cancelled = false
+  let i = 0
+  const body = {
+    getReader() {
+      return {
+        async read() {
+          if (cancelled || i >= chunks.length) return { done: true, value: undefined }
+          return { done: false, value: chunks[i++] }
+        },
+        async cancel() {
+          cancelled = true
+        },
+      }
+    },
+  }
+  return {
+    ok: true,
+    status: 200,
+    headers: { get: (k: string) => headers[k.toLowerCase()] ?? null },
+    body,
+    json: async () => JSON.parse(new TextDecoder().decode(chunks[0] ?? new Uint8Array())),
+  } as unknown as Response
 }
 
 describe('fetchJson', () => {
@@ -72,5 +98,43 @@ describe('fetchJson', () => {
 
   it('exposes a sane default timeout', () => {
     expect(DEFAULT_TIMEOUT_MS).toBe(8000)
+  })
+
+  it('caps the response body and aborts an oversized stream mid-flight', async () => {
+    const enc = new TextEncoder()
+    const big = [enc.encode('{"a":"'), enc.encode('x'.repeat(1000)), enc.encode('"}')]
+    await expect(
+      fetchJson('https://svc.example.com', { maxBytes: 100, fetchImpl: async () => streamResponse(big) }),
+    ).rejects.toBeInstanceOf(ResponseTooLargeError)
+    // A body within budget streams and parses fine.
+    const small = [new TextEncoder().encode('{"ok":true}')]
+    expect(await fetchJson('https://svc.example.com', { maxBytes: 1000, fetchImpl: async () => streamResponse(small) })).toEqual({ ok: true })
+  })
+
+  it('rejects on an oversized content-length before reading the body', async () => {
+    let read = false
+    const resp = {
+      ok: true,
+      status: 200,
+      headers: { get: (k: string) => (k.toLowerCase() === 'content-length' ? '999999' : null) },
+      body: { getReader: () => ({ read: async () => ((read = true), { done: true, value: undefined }), cancel: async () => {} }) },
+      json: async () => ({}),
+    } as unknown as Response
+    await expect(
+      fetchJson('https://svc.example.com', { maxBytes: 1000, fetchImpl: async () => resp }),
+    ).rejects.toBeInstanceOf(ResponseTooLargeError)
+    expect(read).toBe(false)
+  })
+
+  it('defaults redirect to manual (SSRF-safe) and lets callers opt into follow', async () => {
+    let seen: RequestRedirect | undefined
+    const capture = (async (_u: unknown, init: RequestInit) => {
+      seen = init.redirect
+      return okResponse({})
+    }) as unknown as typeof fetch
+    await fetchJson('https://svc.example.com', { fetchImpl: capture })
+    expect(seen).toBe('manual')
+    await fetchJson('https://svc.example.com', { redirect: 'follow', fetchImpl: capture })
+    expect(seen).toBe('follow')
   })
 })

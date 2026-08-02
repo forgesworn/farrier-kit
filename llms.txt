@@ -27,13 +27,20 @@ npm install farrier-kit
   (constant-time), explainPreimage({preimage, paymentHash}) -> {ok, reason?}.
 - farrier-kit/lnurl: parseLightningAddress / isLightningAddress / lnurlPayUrl;
   resolveLnurlPay({address|lnurlpUrl, amountSats|amountMsats, comment?, nostr?,
-  fetchImpl?, urlGuard?}) -> {bolt11, paymentHashHex, verifyUrl?, zap, metadata}
-  (LUD-06/16; invoice amount verified to equal the request; HTTPS-only public
-  hosts, private-IP literals rejected, redirects refused);
-  verifyLud21({verifyUrl, paymentHashHex?}) -> {settled, preimage, verified}
-  (verified=true only on cryptographic preimage match);
-  createCapabilityProbe(...) -> TTL-cached metadata-only probing;
-  assertResolvableUrl, isPrivateIpLiteral, LnurlError.
+  fetchImpl?, urlGuard?, network?, rejectExpired?, verifyDescriptionHash?,
+  nowSeconds?}) -> {bolt11, paymentHashHex, verifyUrl?, zap, metadata}. The
+  returned invoice is decoded and checked: amount equals the request, network
+  matches (default 'bc'/mainnet), not expired, and description_hash matches the
+  metadata when an h tag is present. SSRF guard: HTTPS-only, credential-free,
+  rejects localhost/.local/.internal and private/reserved IP literals (IPv4 and
+  normalised IPv6 — mapped/NAT64/6to4/Teredo/ULA/link-local/multicast), refuses
+  redirects, caps response size. The guard classifies IP LITERALS only; a
+  hostname resolving to a private IP needs a server-side urlGuard (README
+  recipe). verifyLud21({verifyUrl, paymentHashHex?}) -> {settled, preimage,
+  verified} (verified=true only on cryptographic preimage match);
+  createCapabilityProbe({maxEntries?}) -> bounded TTL metadata probing;
+  assertResolvableUrl, isPrivateIpLiteral (only sound on URL-normalised hosts),
+  LnurlError.
 - farrier-kit/http: fetchJson(url, {fetchImpl?, timeoutMs?, method?, headers?,
   body?, redirect?}), HttpError, DEFAULT_TIMEOUT_MS.
 

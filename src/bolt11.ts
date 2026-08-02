@@ -57,8 +57,13 @@ function fail(code: string, message: string): never {
 }
 
 function wordsToNumber(words: number[]): number {
+  // A numeric field wider than 13 words (ceil(64/5)) exceeds uint64 and, past
+  // ~11 words, Number precision — lnd rejects >13 outright. Refuse rather than
+  // silently saturate to Infinity or lose precision (expiry/cltv footgun).
+  if (words.length > 13) fail('BAD_TAG', 'numeric tag field too long')
   let n = 0
   for (const w of words) n = n * 32 + w
+  if (!Number.isSafeInteger(n)) fail('BAD_TAG', 'numeric tag field out of range')
   return n
 }
 
@@ -79,17 +84,25 @@ function wordsToHash(words: number[]): string | null {
   return hex
 }
 
-const HRP_RE = /^ln(bcrt|bc|tbs|tb|sb)(?:(\d+)([munp]))?(\d+)?$/
+// One unambiguous shape: ln<net> optionally followed by <digits><multiplier?>.
+// The earlier form had a trailing (\d+)? that let "lnbc100u200" parse two ways,
+// silently dropping the trailing digits and inventing an amount a strict
+// decoder would reject.
+const HRP_RE = /^ln(bcrt|bc|tbs|tb|sb)(?:(\d+)([munp])?)?$/
+
+/** Max representable amount: the 21M BTC supply, in msats. */
+const MAX_MSATS = 2_100_000_000_000_000_000n
 
 function parseHrp(hrp: string): { network: Bolt11Network; amountMsats: bigint | null } {
-  // Two shapes: ln<net><digits><multiplier> or ln<net><digits> (whole BTC) or ln<net>.
   const m = hrp.match(HRP_RE)
   if (!m) fail('BAD_HRP', `not a BOLT-11 human-readable part: "${hrp}"`)
   const network = m[1] as Bolt11Network
-  const digits = m[2] ?? m[4]
-  const unit = m[2] !== undefined ? m[3] : undefined
+  const digits = m[2]
+  const unit = m[3]
   if (digits === undefined) return { network, amountMsats: null }
-  if (digits.length > 1 && digits.startsWith('0')) fail('BAD_AMOUNT', 'leading zero in amount')
+  // Leading zeros are tolerated on read (lnd and light-bolt11-decoder both
+  // accept them); rejecting made bolt11AmountMsats return null for a priced
+  // invoice, which reads as "amountless" and fails a budget gate open.
   const value = BigInt(digits)
   let msats: bigint
   if (unit === undefined) msats = value * 100_000_000_000n
@@ -101,6 +114,7 @@ function parseHrp(hrp: string): { network: Bolt11Network; amountMsats: bigint | 
     if (value % 10n !== 0n) fail('BAD_AMOUNT', 'pico-BTC amount is not a whole millisatoshi')
     msats = value / 10n
   }
+  if (msats > MAX_MSATS) fail('BAD_AMOUNT', 'amount exceeds the 21M BTC supply')
   return { network, amountMsats: msats }
 }
 
@@ -128,6 +142,14 @@ export function decodeBolt11(invoice: string): DecodedBolt11 {
   let expirySeconds: number | null = null
   let minFinalCltvExpiry: number | null = null
 
+  // Spec: for repeated tags the FIRST occurrence wins. Track "seen" separately
+  // from "parsed value" so a malformed first s/h tag still claims its slot and
+  // a later duplicate cannot override it (matters: h is the description-hash
+  // commitment).
+  let sawPaymentHash = false
+  let sawSecret = false
+  let sawDescHash = false
+
   let i = 0
   while (i + 3 <= fields.length) {
     const type = fields[i]
@@ -136,17 +158,23 @@ export function decodeBolt11(invoice: string): DecodedBolt11 {
     if (data.length < length) fail('BAD_TAG', 'tag runs past the end of the invoice')
     switch (type) {
       case TAG_PAYMENT_HASH:
-        // Spec: exactly one; readers MUST skip extras.
-        if (paymentHashHex === null) {
+        if (!sawPaymentHash) {
+          sawPaymentHash = true
           paymentHashHex = wordsToHash(data)
           if (paymentHashHex === null) fail('BAD_PAYMENT_HASH', 'p tag is not a clean 32-byte field')
         }
         break
       case TAG_PAYMENT_SECRET:
-        if (paymentSecretHex === null) paymentSecretHex = wordsToHash(data)
+        if (!sawSecret) {
+          sawSecret = true
+          paymentSecretHex = wordsToHash(data)
+        }
         break
       case TAG_DESCRIPTION_HASH:
-        if (descriptionHashHex === null) descriptionHashHex = wordsToHash(data)
+        if (!sawDescHash) {
+          sawDescHash = true
+          descriptionHashHex = wordsToHash(data)
+        }
         break
       case TAG_DESCRIPTION:
         if (description === null) description = new TextDecoder().decode(wordsToBytes(data))
@@ -214,7 +242,11 @@ export function bolt11AmountMsats(bolt11: string): number | null {
 
 /** Explicitly-floored msat -> sat conversion (sub-satoshi remainder dropped). */
 export function msatsToSatsFloor(msats: bigint | number): number {
+  if (typeof msats === 'number' && !Number.isFinite(msats)) {
+    throw new Bolt11Error('BAD_AMOUNT', 'amount is not a finite number')
+  }
   const v = typeof msats === 'bigint' ? msats : BigInt(Math.floor(msats))
+  if (v < 0n) throw new Bolt11Error('BAD_AMOUNT', 'amount is negative')
   const sats = v / 1000n
   if (sats > BigInt(Number.MAX_SAFE_INTEGER)) throw new Bolt11Error('OVERFLOW', 'amount exceeds MAX_SAFE_INTEGER sats')
   return Number(sats)
@@ -225,34 +257,62 @@ export interface CommitmentVerdict {
   /** true when the invoice was decoded and its hash compared; absent/false on refusal or deferral. */
   verified?: boolean
   reason?: string
+  /** The decoded invoice amount (msats), so callers can gate on it even without expectedMsats. */
+  amountMsats?: bigint | null
+  /** The decoded network, so callers can reject a wrong-chain invoice. */
+  network?: Bolt11Network
 }
 
 /**
  * The payer's pre-payment check: does this invoice commit to the expected
- * payment_hash? Opaque invoices cannot be pre-verified; requireDecodable must
- * stay true whenever real money is about to move, so an unverifiable invoice
- * refuses rather than pays.
+ * payment_hash — AND, when given, the expected amount and network?
+ *
+ * The payment_hash alone is NOT enough: the payee picks the preimage, so they
+ * can mint a second invoice with the same hash and any amount. Pass
+ * `expectedMsats` (and rely on the default `network: 'bc'`) whenever real money
+ * is about to move. Opaque invoices cannot be pre-verified; `requireDecodable`
+ * must stay true in that case so an unverifiable invoice refuses rather than
+ * pays — and note a deferral returns `ok:true` only for post-hoc detection, so
+ * never treat `ok:true, verified:false` as "safe to pay".
  */
 export function verifyInvoiceCommitment({
   bolt11,
   paymentHash,
+  expectedMsats,
+  network = 'bc',
   requireDecodable = true,
 }: {
   bolt11: string
   paymentHash: string
+  /** When supplied, the invoice amount must equal this exactly. */
+  expectedMsats?: bigint | number
+  /** Required network; pass null to skip. Defaults to mainnet ('bc'). */
+  network?: Bolt11Network | null
   requireDecodable?: boolean
 }): CommitmentVerdict {
   if (typeof paymentHash !== 'string' || !/^[0-9a-f]{64}$/i.test(paymentHash)) {
     return { ok: false, reason: 'no payment_hash to verify against' }
   }
-  const invoiceHash = bolt11PaymentHash(bolt11)
-  if (invoiceHash === null) {
+  const decoded = tryDecodeBolt11(bolt11)
+  if (decoded === null) {
     return requireDecodable
       ? { ok: false, reason: 'invoice is not decodable bolt11; refusing to pay unverified' }
       : { ok: true, verified: false, reason: 'opaque invoice; deferred to the preimage hash check' }
   }
-  if (invoiceHash !== paymentHash.toLowerCase()) {
-    return { ok: false, reason: 'invoice payment_hash does not match the expected commitment' }
+  if (decoded.paymentHashHex !== paymentHash.toLowerCase()) {
+    return { ok: false, reason: 'invoice payment_hash does not match the expected commitment', amountMsats: decoded.amountMsats, network: decoded.network }
   }
-  return { ok: true, verified: true }
+  if (network !== null && decoded.network !== network) {
+    return { ok: false, reason: `invoice is on ${decoded.network}, expected ${network}`, amountMsats: decoded.amountMsats, network: decoded.network }
+  }
+  if (expectedMsats !== undefined) {
+    const want = typeof expectedMsats === 'bigint' ? expectedMsats : BigInt(Math.trunc(expectedMsats))
+    if (decoded.amountMsats === null) {
+      return { ok: false, reason: 'invoice is amountless but an exact amount was required', network: decoded.network }
+    }
+    if (decoded.amountMsats !== want) {
+      return { ok: false, reason: `invoice is for ${decoded.amountMsats} msat, expected ${want} msat`, amountMsats: decoded.amountMsats, network: decoded.network }
+    }
+  }
+  return { ok: true, verified: true, amountMsats: decoded.amountMsats, network: decoded.network }
 }

@@ -1,5 +1,7 @@
 # farrier-kit
 
+[![Nostr](https://img.shields.io/badge/Nostr-Zap%20me-purple)](https://primal.net/p/npub1mgvlrnf5hm9yf0n5mf9nqmvarhvxkc6remu5ec3vf8r0txqkuk7su0e7q2)
+
 Lightning payment primitives that work anywhere. A farrier shoes working animals
 for the road; this kit shoes your payment paths.
 
@@ -9,9 +11,11 @@ for the road; this kit shoes your payment paths.
 - **`farrier-kit/preimage`** — preimage ↔ payment_hash: generate, hash, verify
   (constant-time), explain.
 - **`farrier-kit/lnurl`** — Lightning Address → invoice (LUD-06/16), LUD-21
-  verify with preimage cross-check, capability probing with a TTL cache, and
-  SSRF guarding (HTTPS-only, public hosts, private-IP rejection, manual
-  redirects, injectable DNS-pinning hook).
+  verify with preimage cross-check, capability probing with a bounded TTL
+  cache, invoice amount/network/expiry/description-hash checks, and SSRF
+  guarding for IP literals (HTTPS-only, credential-free, private/reserved IPv4
+  **and normalised IPv6** rejection, manual redirects). See the SSRF note below
+  for the one thing the built-in guard cannot do alone.
 - **`farrier-kit/http`** — `fetchJson` with a hard timeout, because some fetch
   implementations will happily hang forever.
 
@@ -45,8 +49,14 @@ inv.amountMsats    // 250000000n
 inv.amountSats     // 250000 (null when not a whole satoshi)
 inv.expirySeconds  // 60 (spec default 3600 when absent)
 
-// Pre-payment check: does this invoice commit to the hash I was promised?
-const check = verifyInvoiceCommitment({ bolt11, paymentHash: expectedHash })
+// Pre-payment check. The payment_hash ALONE is not enough — the payee picks the
+// preimage, so they can mint a second invoice with the same hash and any amount.
+// Pass expectedMsats (and rely on the default mainnet network) when money moves.
+const check = verifyInvoiceCommitment({
+  bolt11,
+  paymentHash: expectedHash,
+  expectedMsats: 250000000n,
+})
 if (!check.ok) throw new Error(check.reason)
 ```
 
@@ -92,6 +102,36 @@ const body = await fetchJson('https://example.com/.well-known/lnurlp/alice', {
 input class, use `tryDecodeBolt11` (returns `null`), or the single-field
 helpers `bolt11PaymentHash` / `bolt11AmountMsats`.
 
+## SSRF: what the guard does and does not do
+
+`resolveLnurlPay` fetches from payee-controlled domains, so it is an SSRF
+surface. The built-in guard rejects an HTTPS violation, credentials in the URL,
+`localhost`/`.local`/`.internal` hosts (trailing dot included), and any **IP
+literal** in a private or reserved range — IPv4, and IPv6 in every form the URL
+parser normalises to (mapped `::ffff:*`, NAT64, 6to4, Teredo, link/site-local,
+ULA, multicast).
+
+What it **cannot** do in the core: stop a *hostname* that resolves to a private
+address (an attacker A-record at `10.0.0.5`, or a DNS-rebinding TOCTOU).
+Browsers cannot resolve DNS, so a safe default is impossible without a Node
+dependency. **On a server that resolves untrusted addresses, pass `urlGuard`**:
+
+```js
+import { lookup } from 'node:dns/promises'
+import { isPrivateIpLiteral, resolveLnurlPay } from 'farrier-kit/lnurl'
+
+const pinToPublic = async (url) => {
+  const { address } = await lookup(url.hostname)
+  if (isPrivateIpLiteral(address)) throw new Error(`blocked: ${url.hostname} -> ${address}`)
+}
+
+await resolveLnurlPay({ address, amountSats, urlGuard: pinToPublic })
+```
+
+`urlGuard` runs after the built-in checks, on every fetched URL. For full
+protection against rebinding, resolve once and connect to the pinned IP via a
+custom `fetchImpl`/agent.
+
 ## Who uses it
 
 The reference consumer is [DonkeyRide](https://github.com/TheCryptoDonkey/DonkeyRide),
@@ -108,6 +148,15 @@ settlement verification (LNURL-pay + preimage proof).
 | `/nostr-crypto` — NIP-04/NIP-44 v2 on @noble, official-vector CI | planned |
 | `/fiat` — BTC price oracle, ISO-4217 minor units, formatting | planned |
 | `/handles` — Lightning Address / MSISDN validation + PII classification | planned |
+
+## Support
+
+For issues and feature requests, see [GitHub Issues](https://github.com/forgesworn/farrier-kit/issues).
+
+If you find farrier-kit useful, consider sending a tip:
+
+- **Lightning:** `profusemeat89@walletofsatoshi.com`
+- **Nostr zaps:** `npub1mgvlrnf5hm9yf0n5mf9nqmvarhvxkc6remu5ec3vf8r0txqkuk7su0e7q2`
 
 ## Licence
 

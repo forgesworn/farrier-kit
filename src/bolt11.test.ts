@@ -97,6 +97,60 @@ describe('decodeBolt11', () => {
     const inv = buildInvoice('lnbc1u', [P, tag(1, words52('c3'.repeat(32))), tag(19, Array(53).fill(1))])
     expect(decodeBolt11(inv).paymentHashHex).toBe(HASH)
   })
+
+  it('rejects an ambiguous HRP that would drop trailing digits (invented amount)', () => {
+    // Old regex parsed lnbc100u200 as 100u and silently discarded "200".
+    expect(() => decodeBolt11(buildInvoice('lnbc100u200', [P]))).toThrow(/human-readable part/)
+    expect(() => decodeBolt11(buildInvoice('lnbc1u9', [P]))).toThrow(/human-readable part/)
+    expect(() => decodeBolt11(buildInvoice('lnbc10m5', [P]))).toThrow(/human-readable part/)
+    // The still-valid shapes keep working.
+    expect(decodeBolt11(buildInvoice('lnbc1u', [P])).amountMsats).toBe(100_000n)
+    expect(decodeBolt11(buildInvoice('lnbc1m', [P])).amountMsats).toBe(100_000_000n)
+    expect(decodeBolt11(buildInvoice('lnbc100', [P])).amountMsats).toBe(10_000_000_000_000n)
+  })
+
+  it('tolerates leading zeros on read so a priced invoice is not read as amountless', () => {
+    // lnbc0100u = 10,000,000 msat; must NOT throw (would make bolt11AmountMsats null).
+    expect(decodeBolt11(buildInvoice('lnbc0100u', [P])).amountMsats).toBe(10_000_000n)
+    expect(bolt11AmountMsats(buildInvoice('lnbc0100u', [P]))).toBe(10_000_000)
+  })
+
+  it('rejects a numeric tag that would overflow to Infinity or lose precision', () => {
+    expect(() => decodeBolt11(buildInvoice('lnbc1u', [P, tag(6, Array(300).fill(31))]))).toThrow(/too long/)
+    // 14 words is over the uint64 ceiling.
+    expect(() => decodeBolt11(buildInvoice('lnbc1u', [P, tag(6, Array(14).fill(31))]))).toThrow(/too long/)
+    // A normal expiry is unaffected and finite.
+    expect(decodeBolt11(buildInvoice('lnbc1u', [P, tag(6, numberWords(604800))])).expirySeconds).toBe(604800)
+  })
+
+  it('rejects an amount beyond the 21M BTC supply', () => {
+    expect(() => decodeBolt11(buildInvoice(`lnbc${'9'.repeat(20)}`, [P]))).toThrow(/21M BTC/)
+  })
+
+  it('honours first-wins for a malformed s/h tag (no later-duplicate override)', () => {
+    // First h tag malformed (51 words); a second must NOT win — spec first-wins.
+    const inv = buildInvoice('lnbc1u', [
+      P,
+      tag(23, Array(51).fill(1)),
+      tag(23, words52('c3'.repeat(32))),
+    ])
+    expect(decodeBolt11(inv).descriptionHashHex).toBeNull()
+    // Same for the payment secret (s tag, type 16).
+    const inv2 = buildInvoice('lnbc1u', [P, tag(16, Array(51).fill(1)), tag(16, words52('c3'.repeat(32)))])
+    expect(decodeBolt11(inv2).paymentSecretHex).toBeNull()
+  })
+})
+
+describe('msatsToSatsFloor', () => {
+  it('floors and guards non-finite, negative and overflow inputs', () => {
+    expect(msatsToSatsFloor(1500n)).toBe(1)
+    expect(msatsToSatsFloor(999n)).toBe(0)
+    expect(() => msatsToSatsFloor(NaN)).toThrow(Bolt11Error)
+    expect(() => msatsToSatsFloor(Infinity)).toThrow(Bolt11Error)
+    expect(() => msatsToSatsFloor(-1500)).toThrow(/negative/)
+    expect(() => msatsToSatsFloor(-5n)).toThrow(/negative/)
+    expect(() => msatsToSatsFloor(BigInt(Number.MAX_SAFE_INTEGER) * 1000n + 1000n)).toThrow(/MAX_SAFE_INTEGER/)
+  })
 })
 
 describe('v4v-compatible aliases', () => {
@@ -114,9 +168,11 @@ describe('v4v-compatible aliases', () => {
   })
 
   it('verifyInvoiceCommitment accepts a match, refuses opaque unless told otherwise', () => {
-    expect(verifyInvoiceCommitment({ bolt11: SPEC_INVOICE, paymentHash: SPEC_HASH })).toEqual({
+    // SPEC_INVOICE is mainnet ('bc') and amountless.
+    expect(verifyInvoiceCommitment({ bolt11: SPEC_INVOICE, paymentHash: SPEC_HASH })).toMatchObject({
       ok: true,
       verified: true,
+      network: 'bc',
     })
     expect(verifyInvoiceCommitment({ bolt11: SPEC_INVOICE, paymentHash: 'ff'.repeat(32) }).ok).toBe(false)
     expect(verifyInvoiceCommitment({ bolt11: 'lnmock1x', paymentHash: SPEC_HASH }).ok).toBe(false)
@@ -127,6 +183,26 @@ describe('v4v-compatible aliases', () => {
     })
     expect(deferred).toMatchObject({ ok: true, verified: false })
     expect(verifyInvoiceCommitment({ bolt11: SPEC_INVOICE, paymentHash: 'nope' }).ok).toBe(false)
+  })
+
+  it('verifyInvoiceCommitment gates amount and network, not just the hash (H/M finding)', () => {
+    // Same payment hash, attacker-chosen amount: the hash alone must not pass.
+    const agreed = buildInvoice('lnbc5u', [tag(1, words52(HASH))])
+    const swapped = buildInvoice('lnbc5000u', [tag(1, words52(HASH))]) // 1000x
+    const hash = decodeBolt11(agreed).paymentHashHex
+    expect(verifyInvoiceCommitment({ bolt11: agreed, paymentHash: hash, expectedMsats: 500_000n }).ok).toBe(true)
+    const overpay = verifyInvoiceCommitment({ bolt11: swapped, paymentHash: hash, expectedMsats: 500_000n })
+    expect(overpay.ok).toBe(false)
+    expect(overpay.reason).toMatch(/invoice is for 500000000 msat, expected 500000 msat/)
+    // Wrong network is refused even with the right hash and amount.
+    const testnet = buildInvoice('lntb5u', [tag(1, words52(HASH))])
+    expect(verifyInvoiceCommitment({ bolt11: testnet, paymentHash: hash, expectedMsats: 500_000n }).ok).toBe(false)
+    // Explicit network override lets a caller accept testnet.
+    expect(
+      verifyInvoiceCommitment({ bolt11: testnet, paymentHash: hash, expectedMsats: 500_000n, network: 'tb' }).ok,
+    ).toBe(true)
+    // expectedMsats against an amountless invoice is refused.
+    expect(verifyInvoiceCommitment({ bolt11: SPEC_INVOICE, paymentHash: SPEC_HASH, expectedMsats: 1n }).ok).toBe(false)
   })
 })
 

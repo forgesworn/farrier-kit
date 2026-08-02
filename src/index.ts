@@ -21,7 +21,14 @@ export {
   type PreimageVerdict,
 } from './preimage.js'
 
-export { fetchJson, HttpError, DEFAULT_TIMEOUT_MS, type FetchJsonOptions } from './http.js'
+export {
+  fetchJson,
+  HttpError,
+  ResponseTooLargeError,
+  DEFAULT_TIMEOUT_MS,
+  DEFAULT_MAX_BYTES,
+  type FetchJsonOptions,
+} from './http.js'
 
 export {
   isLightningAddress,

@@ -6,9 +6,16 @@
 // amount must equal the requested amount, and a LUD-21 preimage is
 // cross-checked against the payment hash rather than trusted.
 
-import { decodeBolt11 } from './bolt11.js'
+import { sha256 } from '@noble/hashes/sha2'
+import { bytesToHex } from '@noble/hashes/utils'
+import { decodeBolt11, type Bolt11Network } from './bolt11.js'
 import { fetchJson, type FetchJsonOptions } from './http.js'
 import { verifyPreimage } from './preimage.js'
+
+/** Metadata/comment responses are tiny; cap the fetch to protect against OOM. */
+const LNURL_MAX_RESPONSE_BYTES = 256 * 1024
+/** LUD-12 comments are short in practice; refuse an absurd service-set ceiling. */
+const COMMENT_MAX = 2000
 
 export class LnurlError extends Error {
   code: string
@@ -62,54 +69,146 @@ export function lnurlPayUrl({ name, domain }: { name: string; domain: string }):
 }
 
 // ---------------------------------------------------------------------------
-// URL guarding (SSRF). Browser-safe: shape checks plus literal-IP
-// classification. Servers that can resolve DNS should ALSO pin resolved
-// addresses via the injectable urlGuard option.
+// URL guarding (SSRF).
+//
+// IMPORTANT — scope of this guard. It classifies IP *literals* and blocks
+// localhost/HTTPS/credential violations. It CANNOT, on its own, stop a
+// hostname that RESOLVES to a private address (e.g. an attacker A-record
+// pointing at 10.0.0.5, or a rebinding TOCTOU). Browsers cannot resolve DNS,
+// so a fully-safe default is impossible in the core. Server callers that
+// accept untrusted addresses MUST pass `urlGuard` doing DNS resolution +
+// per-address pinning — see the README recipe. Without it, treat resolution
+// of attacker-controlled addresses as blind-SSRF-capable.
+
+// Parse an IPv4 string into 4 octets, or null. Only strict dotted-decimal;
+// the WHATWG URL parser normalises decimal/octal/hex forms before we see a
+// hostname, so this only ever runs on already-normalised input in the guard.
+function parseIpv4(host: string): number[] | null {
+  const m = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+  if (!m) return null
+  const octets = m.slice(1, 5).map((o) => Number(o))
+  if (octets.some((o) => o > 255)) return null
+  return octets
+}
+
+// Parse an IPv6 literal (already bracket-stripped, lowercased) into 8 hextets,
+// handling `::` compression and a trailing embedded IPv4 dotted-quad. Returns
+// null if not parseable as IPv6.
+function parseIpv6(host: string): number[] | null {
+  if (!host.includes(':')) return null
+  let text = host
+  let tailV4: number[] | null = null
+  const lastColon = text.lastIndexOf(':')
+  const tail = text.slice(lastColon + 1)
+  if (tail.includes('.')) {
+    tailV4 = parseIpv4(tail)
+    if (!tailV4) return null
+    text = text.slice(0, lastColon + 1) + '0:0'
+  }
+  const halves = text.split('::')
+  if (halves.length > 2) return null
+  const toHextets = (part: string): number[] | null => {
+    if (part === '') return []
+    const out: number[] = []
+    for (const g of part.split(':')) {
+      if (!/^[0-9a-f]{1,4}$/.test(g)) return null
+      out.push(parseInt(g, 16))
+    }
+    return out
+  }
+  const head = toHextets(halves[0])
+  const rear = halves.length === 2 ? toHextets(halves[1]) : []
+  if (head === null || rear === null) return null
+  let hextets: number[]
+  if (halves.length === 2) {
+    const fill = 8 - head.length - rear.length
+    if (fill < 0) return null
+    hextets = [...head, ...Array(fill).fill(0), ...rear]
+  } else {
+    hextets = head
+  }
+  if (hextets.length !== 8) return null
+  if (tailV4) {
+    hextets[6] = (tailV4[0] << 8) | tailV4[1]
+    hextets[7] = (tailV4[2] << 8) | tailV4[3]
+  }
+  return hextets
+}
 
 function isPrivateIpv4(octets: number[]): boolean {
-  const [a, b] = octets
+  const [a, b, c] = octets
   if (a === 0 || a === 10 || a === 127) return true
-  if (a === 100 && b >= 64 && b <= 127) return true // CGNAT
-  if (a === 169 && b === 254) return true
-  if (a === 172 && b >= 16 && b <= 31) return true
-  if (a === 192 && b === 168) return true
-  if (a === 192 && b === 0 && octets[2] === 2) return true // TEST-NET-1
-  if (a === 198 && octets[1] === 51 && octets[2] === 100) return true // TEST-NET-2
-  if (a === 203 && b === 0 && octets[2] === 113) return true // TEST-NET-3
-  if (a >= 224) return true // multicast + reserved + broadcast
+  if (a === 100 && b >= 64 && b <= 127) return true // CGNAT 100.64/10
+  if (a === 169 && b === 254) return true // link-local 169.254/16
+  if (a === 172 && b >= 16 && b <= 31) return true // 172.16/12
+  if (a === 192 && b === 168) return true // 192.168/16
+  if (a === 192 && b === 0 && c === 0) return true // 192.0.0/24 IETF protocol assignments
+  if (a === 192 && b === 0 && c === 2) return true // TEST-NET-1
+  if (a === 192 && b === 88 && c === 99) return true // 192.88.99/24 6to4 relay anycast
+  if (a === 198 && (b === 18 || b === 19)) return true // 198.18/15 benchmarking
+  if (a === 198 && b === 51 && c === 100) return true // TEST-NET-2
+  if (a === 203 && b === 0 && c === 113) return true // TEST-NET-3
+  if (a >= 224) return true // 224/4 multicast + 240/4 reserved + broadcast
   return false
 }
 
-/** True when hostname is an IP literal in a private/reserved range. */
-export function isPrivateIpLiteral(hostname: string): boolean {
-  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase()
-  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
-  if (v4) {
-    const octets = v4.slice(1).map(Number)
-    if (octets.some((o) => o > 255)) return true // malformed: refuse
-    return isPrivateIpv4(octets)
+function isPrivateIpv6(h: number[]): boolean {
+  const embedsV4 = (start: number) => isPrivateIpv4([h[start] >> 8, h[start] & 0xff, h[start + 1] >> 8, h[start + 1] & 0xff])
+  // ::/96 — covers ::, ::1, IPv4-compatible, ::ffff:v4 (v4-mapped), ::ffff:0:v4.
+  if (h[0] === 0 && h[1] === 0 && h[2] === 0 && h[3] === 0 && h[4] === 0 && (h[5] === 0 || h[5] === 0xffff)) {
+    if (h[6] === 0 && h[7] === 0) return true // :: unspecified
+    if (h[5] === 0 && h[6] === 0 && h[7] === 1) return true // ::1 loopback
+    return embedsV4(6)
   }
-  if (host.includes(':')) {
-    if (host === '::' || host === '::1') return true
-    if (/^f[cd]/.test(host)) return true // fc00::/7 unique local
-    if (/^fe[89ab]/.test(host)) return true // fe80::/10 link local
-    if (host.startsWith('2001:db8')) return true // documentation
-    const mapped = host.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/)
-    if (mapped) return isPrivateIpLiteral(mapped[1])
-    return false
-  }
+  if (h[0] === 0x64 && h[1] === 0xff9b) return embedsV4(6) // 64:ff9b::/96 NAT64
+  if (h[0] === 0x2002) return isPrivateIpv4([h[1] >> 8, h[1] & 0xff, h[2] >> 8, h[2] & 0xff]) // 2002::/16 6to4
+  if (h[0] === 0x2001 && h[1] === 0) return true // 2001::/32 Teredo
+  if (h[0] === 0x2001 && h[1] === 0x0db8) return true // 2001:db8::/32 documentation
+  if (h[0] === 0x0100 && h[1] === 0 && h[2] === 0 && h[3] === 0) return true // 100::/64 discard-only
+  if ((h[0] & 0xfe00) === 0xfc00) return true // fc00::/7 unique local
+  if ((h[0] & 0xffc0) === 0xfe80) return true // fe80::/10 link local
+  if ((h[0] & 0xffc0) === 0xfec0) return true // fec0::/10 site local (deprecated)
+  if ((h[0] & 0xff00) === 0xff00) return true // ff00::/8 multicast
   return false
-}
-
-function isIpLiteral(hostname: string): boolean {
-  const host = hostname.replace(/^\[|\]$/g, '')
-  return /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host.includes(':')
 }
 
 /**
- * HTTPS-only, public-host URL check. Throws LnurlError on violation.
- * This is the browser-safe half; pass a urlGuard doing DNS resolution for
- * full server-side SSRF pinning.
+ * True when hostname is an IP literal in a private/reserved range.
+ *
+ * SAFE ONLY on already-URL-normalised hostnames (what `url.hostname` yields):
+ * the WHATWG URL parser canonicalises decimal/octal/hex IPv4 and compressed
+ * IPv6 before a hostname exists. Do NOT call this on a raw, un-normalised
+ * string (a config value, a header) and expect it to catch `0x7f000001` or
+ * `2130706433` — it will not. Feed such input through `new URL()` first.
+ */
+export function isPrivateIpLiteral(hostname: string): boolean {
+  const host = stripHost(hostname)
+  const v4 = parseIpv4(host)
+  if (v4) return isPrivateIpv4(v4)
+  const v6 = parseIpv6(host)
+  if (v6) return isPrivateIpv6(v6)
+  return false
+}
+
+// Strip surrounding IPv6 brackets, lowercase, and drop a single fully-qualified
+// trailing dot (`localhost.` and `10.0.0.1.` resolve exactly as without it).
+function stripHost(hostname: string): string {
+  let host = hostname.replace(/^\[|\]$/g, '').toLowerCase()
+  if (host.endsWith('.')) host = host.slice(0, -1)
+  return host
+}
+
+function isIpLiteral(host: string): boolean {
+  return parseIpv4(host) !== null || host.includes(':')
+}
+
+const LOCAL_SUFFIXES = ['.localhost', '.local', '.internal', '.home.arpa']
+const LOCAL_EXACT = new Set(['localhost'])
+
+/**
+ * HTTPS-only, public-host, credential-free URL check. Throws LnurlError on
+ * violation. Classifies IP literals only — see the module note on `urlGuard`
+ * for hostnames that resolve inward.
  */
 export function assertResolvableUrl(input: string | URL): URL {
   let url: URL
@@ -119,11 +218,12 @@ export function assertResolvableUrl(input: string | URL): URL {
     fail('BAD_URL', 'not a URL')
   }
   if (url.protocol !== 'https:') fail('BAD_URL', 'LNURL endpoints must use HTTPS')
-  const hostname = url.hostname.toLowerCase()
-  if (!hostname || hostname === 'localhost' || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
+  if (url.username || url.password) fail('BAD_URL', 'LNURL endpoints must not carry credentials')
+  const host = stripHost(url.hostname)
+  if (!host || LOCAL_EXACT.has(host) || LOCAL_SUFFIXES.some((s) => host.endsWith(s))) {
     fail('BAD_URL', 'LNURL endpoints must use a public host')
   }
-  if (isIpLiteral(hostname) && isPrivateIpLiteral(hostname)) {
+  if (isIpLiteral(host) && isPrivateIpLiteral(host)) {
     fail('BAD_URL', 'LNURL endpoint points at a private or reserved address')
   }
   return url
@@ -159,9 +259,29 @@ export interface ResolveLnurlPayOptions {
   timeoutMs?: number
   /**
    * Extra async URL check (e.g. server-side DNS resolution pinning) applied
-   * to both the well-known URL and the callback after the built-in guard.
+   * to every fetched URL after the built-in guard. REQUIRED for safe handling
+   * of untrusted addresses on a server — the built-in guard classifies IP
+   * literals only, not hostnames that resolve inward. See the README recipe.
    */
   urlGuard?: (url: URL) => void | Promise<void>
+  /**
+   * Reject an invoice whose network does not match. Defaults to 'bc'
+   * (mainnet) — the safe default for a money path. Pass null to accept any
+   * network (dev/regtest).
+   */
+  network?: Bolt11Network | null
+  /** Reject an already-expired invoice. Default true. */
+  rejectExpired?: boolean
+  /** Seconds of clock-skew slack allowed on the expiry check. Default 60. */
+  expirySlackSeconds?: number
+  /**
+   * Verify the invoice's LUD-06 description_hash against the metadata string
+   * when the invoice carries an `h` tag. Default true. This is the binding
+   * that stops a service swapping the description (matters for NIP-57 zaps).
+   */
+  verifyDescriptionHash?: boolean
+  /** Injectable clock (seconds since epoch) for the expiry check. */
+  nowSeconds?: () => number
 }
 
 export interface ResolvedLnurlPay {
@@ -179,7 +299,10 @@ export interface ResolvedLnurlPay {
 
 function toMsats(opts: { amountSats?: number; amountMsats?: bigint | number }): bigint {
   if (opts.amountMsats !== undefined) {
-    const v = typeof opts.amountMsats === 'bigint' ? opts.amountMsats : BigInt(Math.trunc(opts.amountMsats))
+    if (typeof opts.amountMsats === 'number' && !Number.isInteger(opts.amountMsats)) {
+      fail('BAD_AMOUNT', 'amountMsats must be a positive integer')
+    }
+    const v = typeof opts.amountMsats === 'bigint' ? opts.amountMsats : BigInt(opts.amountMsats)
     if (v <= 0n) fail('BAD_AMOUNT', 'amountMsats must be positive')
     return v
   }
@@ -192,6 +315,21 @@ function toMsats(opts: { amountSats?: number; amountMsats?: bigint | number }): 
   fail('BAD_AMOUNT', 'one of amountSats or amountMsats is required')
 }
 
+/** Finite non-negative Number from untrusted JSON, else 0 (never Infinity/NaN into BigInt). */
+function safeSendable(value: unknown): number {
+  const n = Number(value)
+  return Number.isFinite(n) && n > 0 ? n : 0
+}
+
+/** Truncate a comment to a BYTE budget (LUD-12 counts bytes), without splitting a code point. */
+function truncateComment(comment: string, maxBytes: number): string {
+  const budget = Math.min(maxBytes, COMMENT_MAX)
+  const bytes = new TextEncoder().encode(comment)
+  if (bytes.length <= budget) return comment
+  // Decode the byte-prefix, dropping a trailing partial multi-byte sequence.
+  return new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, budget)).replace(/�$/, '')
+}
+
 function readMetadata(body: Record<string, unknown>): LnurlPayMetadata {
   if (body.status === 'ERROR') fail('SERVICE_ERROR', String(body.reason ?? 'LNURL service returned an error'))
   if (body.tag !== undefined && body.tag !== 'payRequest') fail('NOT_PAYREQUEST', 'endpoint is not an LNURL-pay service')
@@ -199,9 +337,9 @@ function readMetadata(body: Record<string, unknown>): LnurlPayMetadata {
   return {
     tag: String(body.tag ?? ''),
     callback: body.callback,
-    minSendable: Number(body.minSendable ?? 0),
-    maxSendable: Number(body.maxSendable ?? 0),
-    commentAllowed: Number(body.commentAllowed ?? 0),
+    minSendable: safeSendable(body.minSendable),
+    maxSendable: safeSendable(body.maxSendable),
+    commentAllowed: safeSendable(body.commentAllowed),
     allowsNostr: Boolean(body.allowsNostr),
     nostrPubkey: typeof body.nostrPubkey === 'string' ? body.nostrPubkey : '',
     metadata: typeof body.metadata === 'string' ? body.metadata : '',
@@ -218,6 +356,7 @@ async function guardedFetchJson(
     fetchImpl: opts.fetchImpl,
     timeoutMs: opts.timeoutMs,
     redirect: 'manual',
+    maxBytes: LNURL_MAX_RESPONSE_BYTES,
   })
 }
 
@@ -260,7 +399,7 @@ export async function resolveLnurlPay(opts: ResolveLnurlPayOptions): Promise<Res
   if (zap) {
     callback.searchParams.set('nostr', String(opts.nostr))
   } else if (opts.comment && metadata.commentAllowed > 0) {
-    callback.searchParams.set('comment', String(opts.comment).slice(0, metadata.commentAllowed))
+    callback.searchParams.set('comment', truncateComment(String(opts.comment), metadata.commentAllowed))
   }
 
   const invoiceBody = await guardedFetchJson(callback, opts)
@@ -283,14 +422,49 @@ export async function resolveLnurlPay(opts: ResolveLnurlPayOptions): Promise<Res
     fail('AMOUNT_MISMATCH', `invoice is for ${decoded.amountMsats} msat, requested ${msats} msat`)
   }
 
+  const expectNetwork = opts.network === undefined ? 'bc' : opts.network
+  if (expectNetwork !== null && decoded.network !== expectNetwork) {
+    fail('NETWORK_MISMATCH', `invoice is on ${decoded.network}, expected ${expectNetwork}`)
+  }
+
+  if (opts.rejectExpired !== false) {
+    const nowSec = (opts.nowSeconds ?? (() => Math.floor(Date.now() / 1000)))()
+    const slack = opts.expirySlackSeconds ?? 60
+    if (decoded.timestamp + decoded.expirySeconds + slack < nowSec) {
+      fail('INVOICE_EXPIRED', `invoice expired at ${decoded.timestamp + decoded.expirySeconds}, now ${nowSec}`)
+    }
+  }
+
+  // LUD-06: the invoice's description_hash binds it to the metadata string.
+  // A service that swaps the description (or, for zaps, the request) breaks
+  // this. Only enforce when both sides are present.
+  if (opts.verifyDescriptionHash !== false && decoded.descriptionHashHex && metadata.metadata) {
+    const expected = bytesToHex(sha256(new TextEncoder().encode(metadata.metadata)))
+    if (expected !== decoded.descriptionHashHex.toLowerCase()) {
+      fail('DESCRIPTION_HASH_MISMATCH', 'invoice description_hash does not match the LNURL metadata')
+    }
+  }
+
+  // LUD-21 verify URL: bind it to the callback origin and guard it, so a
+  // hostile service cannot stash an internal-facing URL for later.
+  let verifyUrl: string | null = null
   const verify = invoiceBody.verify
+  if (typeof verify === 'string' && verify) {
+    try {
+      const checked = assertResolvableUrl(verify)
+      if (checked.origin === callback.origin) verifyUrl = checked.toString()
+    } catch {
+      verifyUrl = null
+    }
+  }
+
   return {
     address,
     amountMsats: msats,
     amountSats: msats % 1000n === 0n ? Number(msats / 1000n) : null,
     bolt11,
     paymentHashHex: decoded.paymentHashHex,
-    verifyUrl: typeof verify === 'string' && verify ? verify : null,
+    verifyUrl,
     zap,
     metadata,
   }
@@ -362,9 +536,12 @@ export function createCapabilityProbe({
   timeoutMs,
   urlGuard,
   cacheTtlMs = 5 * 60 * 1000,
+  maxEntries = 1000,
   now = () => Date.now(),
 }: Pick<ResolveLnurlPayOptions, 'fetchImpl' | 'timeoutMs' | 'urlGuard'> & {
   cacheTtlMs?: number
+  /** Cap the cache so untrusted probe volume cannot grow it without bound. */
+  maxEntries?: number
   now?: () => number
 } = {}): CapabilityProbe {
   const cache = new Map<string, { at: number; value: LnurlPayCapability }>()
@@ -396,6 +573,11 @@ export function createCapabilityProbe({
           allowsNostr: false,
           nostrPubkey: '',
         }
+      }
+      // FIFO eviction once full — Map preserves insertion order.
+      if (!cache.has(parsed.address) && cache.size >= maxEntries) {
+        const oldest = cache.keys().next().value
+        if (oldest !== undefined) cache.delete(oldest)
       }
       cache.set(parsed.address, { at: now(), value })
       return value
