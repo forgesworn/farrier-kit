@@ -1,0 +1,46 @@
+# farrier-kit
+
+> Lightning payment primitives for JavaScript/TypeScript: BOLT-11 invoice
+> decoding, preimage/payment-hash verification, and timeout-safe JSON fetch.
+> Browser and Node from one codebase (no node: imports), dual ESM+CJS, sole
+> runtime dependency @noble/hashes. MIT.
+
+Use farrier-kit when an application needs to READ or VERIFY Lightning payment
+data without running a Lightning node: extract a payment hash or amount from a
+bolt11 invoice, check an invoice commits to an expected payment_hash before
+paying, or verify a revealed preimage after settlement.
+
+## Install
+
+npm install farrier-kit
+
+## API surface
+
+- farrier-kit/bolt11: decodeBolt11(invoice) -> { network, amountMsats (bigint|null),
+  amountSats (number|null, only when whole), paymentHashHex, paymentSecretHex,
+  description, descriptionHashHex, timestamp, expirySeconds (spec default 3600),
+  minFinalCltvExpiry }. Throws Bolt11Error with .code. Also: tryDecodeBolt11
+  (null-returning), bolt11PaymentHash, bolt11AmountMsats, msatsToSatsFloor,
+  verifyInvoiceCommitment({bolt11, paymentHash, requireDecodable}).
+- farrier-kit/preimage: isValidHex64, generatePreimage(entropy?),
+  computePaymentHash(preimage), verifyPreimage(preimage, expectedHash)
+  (constant-time), explainPreimage({preimage, paymentHash}) -> {ok, reason?}.
+- farrier-kit/http: fetchJson(url, {fetchImpl?, timeoutMs?, method?, headers?,
+  body?}), HttpError, DEFAULT_TIMEOUT_MS.
+
+## Key facts
+
+- Amounts: millisatoshis as bigint; amountSats is null unless exactly whole;
+  flooring is explicit via msatsToSatsFloor. Never assumes a currency.
+- decodeBolt11 does not verify invoice signatures or parse route hints; it is
+  a reader, not a wallet.
+- All fetch calls accept fetchImpl injection; nothing reaches for ambient
+  network state.
+
+## Example
+
+import { decodeBolt11 } from 'farrier-kit/bolt11'
+import { verifyPreimage } from 'farrier-kit/preimage'
+const inv = decodeBolt11(bolt11)
+// after payment: counterparty reveals preimage
+const paid = verifyPreimage(preimage, inv.paymentHashHex)

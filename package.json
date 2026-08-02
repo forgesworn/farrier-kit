@@ -1,0 +1,91 @@
+{
+  "name": "farrier-kit",
+  "version": "0.0.0-development",
+  "description": "Lightning payment primitives that work anywhere: bolt11 decoding, preimage verification, LNURL-pay resolution and timeout-safe JSON fetch. Zero-dependency core on @noble, browser and Node from one codebase.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    },
+    "./bolt11": {
+      "types": "./dist/bolt11.d.ts",
+      "import": "./dist/bolt11.js",
+      "require": "./dist/bolt11.cjs"
+    },
+    "./preimage": {
+      "types": "./dist/preimage.d.ts",
+      "import": "./dist/preimage.js",
+      "require": "./dist/preimage.cjs"
+    },
+    "./http": {
+      "types": "./dist/http.d.ts",
+      "import": "./dist/http.js",
+      "require": "./dist/http.cjs"
+    }
+  },
+  "files": [
+    "dist",
+    "llms.txt"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:no-node-imports": "! grep -rEn \"from ['\\\"]node:|require\\(['\\\"]node:\" src --include='*.ts' --exclude='*.test.ts'",
+    "check:browser-bundle": "esbuild dist/index.js --bundle --platform=browser --outfile=/dev/null --log-level=error",
+    "prepublishOnly": "npm run typecheck && npm run check:no-node-imports && npm run test && npm run build && npm run check:browser-bundle"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/forgesworn/farrier-kit.git"
+  },
+  "homepage": "https://github.com/forgesworn/farrier-kit#readme",
+  "bugs": {
+    "url": "https://github.com/forgesworn/farrier-kit/issues"
+  },
+  "license": "MIT",
+  "author": "forgesworn",
+  "keywords": [
+    "lightning",
+    "bitcoin",
+    "bolt11",
+    "invoice",
+    "preimage",
+    "payment-hash",
+    "lnurl",
+    "lightning-address",
+    "lud16",
+    "nwc",
+    "nip47",
+    "nostr"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "provenance": true
+  },
+  "release": {
+    "branches": [
+      "main"
+    ]
+  },
+  "dependencies": {
+    "@noble/hashes": "^1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "esbuild": "^0.25.0",
+    "light-bolt11-decoder": "3.2.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.0.0"
+  }
+}

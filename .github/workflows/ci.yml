@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - name: No node imports in library code (browser-safety gate)
+        run: npm run check:no-node-imports
+      - run: npm test
+      - run: npm run build
+      - name: Browser bundle gate (esbuild must resolve with no node builtins)
+        run: npm run check:browser-bundle
+
+  # Consumers on the oldest supported Node consume dist, not our test runner.
+  consume-node18:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 18
+      - name: Dual-consumption smoke on Node 18 (require + import)
+        run: |
+          node -e "const {computePaymentHash, verifyPreimage, generatePreimage} = require('./dist/preimage.cjs'); const p=generatePreimage(); if (!verifyPreimage(p, computePaymentHash(p))) process.exit(1); console.log('cjs ok on', process.version)"
+          node --input-type=module -e "import('./dist/bolt11.js').then(m => { const d = m.tryDecodeBolt11('nope'); if (d !== null || typeof m.decodeBolt11 !== 'function') process.exit(1); console.log('esm ok on', process.version) })"
