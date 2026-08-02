@@ -1,6 +1,6 @@
 {
   "name": "farrier-kit",
-  "version": "0.0.0-development",
+  "version": "1.0.0",
   "description": "Lightning payment primitives that work anywhere: bolt11 decoding, preimage verification, LNURL-pay resolution and timeout-safe JSON fetch. Zero-dependency core on @noble, browser and Node from one codebase.",
   "type": "module",
   "sideEffects": false,
@@ -38,12 +38,14 @@
     "dist",
     "vectors/*.json",
     "CONFORMANCE.md",
+    "CHANGELOG.md",
     "llms.txt"
   ],
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:vectors": "vitest run vectors/vectors.test.ts",
     "test:watch": "vitest",
     "check:no-node-imports": "! grep -rEn \"from ['\\\"]node:|require\\(['\\\"]node:\" src --include='*.ts' --exclude='*.test.ts'",
     "check:browser-bundle": "esbuild dist/index.js --bundle --platform=browser --outfile=/dev/null --log-level=error",
@@ -79,17 +81,6 @@
   },
   "publishConfig": {
     "provenance": true
-  },
-  "release": {
-    "branches": [
-      "main"
-    ],
-    "plugins": [
-      "@semantic-release/commit-analyzer",
-      "@semantic-release/release-notes-generator",
-      "@semantic-release/npm",
-      "@semantic-release/github"
-    ]
   },
   "dependencies": {
     "@noble/hashes": "^1.8.0"

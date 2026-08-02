@@ -1,45 +1,38 @@
-name: Release
+name: release
+
+# Hardened npm release via forgesworn/anvil: OIDC trusted publishing (no
+# NPM_TOKEN), SLSA provenance, secret scan on the pack set, exports check,
+# frozen-vector gate, and a two-runner reproducible-build attestation.
+#
+# Two triggers land on this one file, which is the OIDC entry-point npm's
+# trusted publisher matches against:
+#   release: published  - you create the GitHub Release, this publishes it
+#   workflow_dispatch    - publish a specific tag by hand
+#
+# First publish of this new package name is a one-time manual `npm publish`
+# (see RELEASING.md); trusted publishing takes over from the next release.
 
 on:
-  push:
-    branches: [main]
-  workflow_dispatch: {} # lets you trigger the first release from the Actions tab
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to publish (e.g. v1.0.1)
+        type: string
+        required: true
 
 permissions:
   contents: write
-  issues: write
-  pull-requests: write
   id-token: write
 
 jobs:
   release:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          registry-url: https://registry.npmjs.org
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run check:no-node-imports
-      - name: Conformance vectors are in sync with the generator
-        run: |
-          node scripts/gen-vectors.mjs
-          git diff --exit-code vectors/*.json
-      - run: npm test
-      - run: npm run build
-      - run: npm run check:browser-bundle
-      - name: Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-        run: |
-          if [ -z "$NPM_TOKEN" ]; then
-            echo "::notice::NPM_TOKEN not configured; skipping publish (add the secret to enable releases)"
-            exit 0
-          fi
-          npx --yes semantic-release
+    uses: forgesworn/anvil/.github/workflows/release.yml@v0
+    with:
+      tag: ${{ inputs.tag || '' }}
+      vector-test-command: npm run test:vectors
+      # Warn-only to start. Flip both to strict once the ci.yml actions are
+      # SHA-pinned and the tsup build is confirmed byte-reproducible.
+      strict-action-pins: false
+      reproducibility-mode: warn
