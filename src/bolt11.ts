@@ -293,6 +293,18 @@ export function verifyInvoiceCommitment({
   if (typeof paymentHash !== 'string' || !/^[0-9a-f]{64}$/i.test(paymentHash)) {
     return { ok: false, reason: 'no payment_hash to verify against' }
   }
+  // Validate expectedMsats BEFORE any decode attempt, so the requireDecodable:
+  // false deferral path refuses the same malformed inputs a decodable invoice
+  // would. NaN/Infinity/fractional: return a verdict (fail closed) rather than
+  // throwing a raw RangeError from BigInt(), this is an exact payment gate.
+  if (expectedMsats !== undefined) {
+    if (typeof expectedMsats === 'number' && !Number.isSafeInteger(expectedMsats)) {
+      return { ok: false, reason: 'expectedMsats must be a safe integer' }
+    }
+    if (expectedMsats < 0) {
+      return { ok: false, reason: 'expectedMsats must not be negative' }
+    }
+  }
   const decoded = tryDecodeBolt11(bolt11)
   if (decoded === null) {
     return requireDecodable
@@ -306,11 +318,6 @@ export function verifyInvoiceCommitment({
     return { ok: false, reason: `invoice is on ${decoded.network}, expected ${network}`, amountMsats: decoded.amountMsats, network: decoded.network }
   }
   if (expectedMsats !== undefined) {
-    if (typeof expectedMsats === 'number' && !Number.isSafeInteger(expectedMsats)) {
-      // NaN/Infinity/fractional: return a verdict (fail closed) rather than
-      // throwing a raw RangeError from BigInt(), this is an exact payment gate.
-      return { ok: false, reason: 'expectedMsats must be a safe integer', amountMsats: decoded.amountMsats, network: decoded.network }
-    }
     const want = typeof expectedMsats === 'bigint' ? expectedMsats : BigInt(expectedMsats)
     if (decoded.amountMsats === null) {
       return { ok: false, reason: 'invoice is amountless but an exact amount was required', network: decoded.network }

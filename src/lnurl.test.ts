@@ -115,6 +115,15 @@ describe('URL guard (SSRF)', () => {
     // 999.1.1.1 is not a valid IPv4 literal, so it is not classified as one.
     // It flows to DNS/urlGuard rather than being force-blocked here.
     expect(isPrivateIpLiteral('999.1.1.1')).toBe(false)
+    // A scoped link-local literal (zone ID from mDNS, /etc/hosts or a custom
+    // resolve seam) classifies by its address, not its zone suffix.
+    expect(isPrivateIpLiteral('fe80::1%lo0')).toBe(true)
+    expect(isPrivateIpLiteral('FE80::1%eth0')).toBe(true)
+    expect(isPrivateIpLiteral('2600:9000::1%wan')).toBe(false) // public stays public
+    // Fail closed: an unparseable string that still looks like an IPv6 literal
+    // is treated as private rather than waved through as public.
+    expect(isPrivateIpLiteral('gg::1')).toBe(true)
+    expect(isPrivateIpLiteral('1:2:3:4:5:6:7:8:9')).toBe(true)
     expect(() => assertResolvableUrl('https://192.168.1.1/x')).toThrow(/private or reserved/)
     expect(() => assertResolvableUrl('https://[::1]/x')).toThrow(/private or reserved/)
   })

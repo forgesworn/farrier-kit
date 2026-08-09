@@ -106,6 +106,25 @@ describe('createPinnedFetch address policy', () => {
     expect(await fetchJson('https://localdev.example.com/x', { fetchImpl: f })).toEqual({ dev: true })
   })
 
+  it('rejects a scope-suffixed link-local answer from a custom resolver', async () => {
+    // DNS wire format cannot carry a zone ID, but mDNS, /etc/hosts or a
+    // consumer-supplied resolve seam can return one. Classification must not
+    // fail open on it.
+    const { impl, calls } = fakeRequest(() => fakeRes('{}'))
+    const f = createPinnedFetch({ resolve: async () => [{ address: 'fe80::1%lo0', family: 6 }], requestImpl: impl })
+    await expect(f('https://pay.example.com/x')).rejects.toThrow(/private or reserved/)
+    expect(calls).toHaveLength(0)
+  })
+
+  it('refuses plaintext http: by default and honours the allowHttp escape hatch', async () => {
+    const { impl, calls } = fakeRequest(() => fakeRes('{"ok":true}'))
+    const strict = createPinnedFetch({ resolve: async () => REAL_PUBLIC_V4, requestImpl: impl })
+    await expect(strict('http://pay.example.com/x')).rejects.toThrow(/plaintext http:/)
+    expect(calls).toHaveLength(0)
+    const dev = createPinnedFetch({ allowHttp: true, resolve: async () => REAL_PUBLIC_V4, requestImpl: impl })
+    expect(await fetchJson('http://pay.example.com/x', { fetchImpl: dev })).toEqual({ ok: true })
+  })
+
   it('refuses a non-http(s) protocol', async () => {
     const f = createPinnedFetch({ resolve: async () => REAL_PUBLIC_V4 })
     await expect(f('ftp://pay.example.com/x')).rejects.toThrow(/unsupported protocol/)
@@ -198,7 +217,7 @@ describe('createPinnedFetch over a real loopback socket', () => {
     const port = (server!.address() as AddressInfo).port
     // The URL host is a name that would never resolve to loopback on its own;
     // the pin sends the connection to 127.0.0.1 while the Host header stays the name.
-    const f = createPinnedFetch({ allowPrivate: true, resolve: async () => [{ address: '127.0.0.1', family: 4 }] })
+    const f = createPinnedFetch({ allowPrivate: true, allowHttp: true, resolve: async () => [{ address: '127.0.0.1', family: 4 }] })
     const body = await fetchJson<{ pong: boolean }>(`http://pinned.example.test:${port}/x`, { fetchImpl: f })
     expect(body).toEqual({ pong: true })
     expect(seenHost).toBe(`pinned.example.test:${port}`)

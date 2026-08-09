@@ -210,6 +210,32 @@ describe('v4v-compatible aliases', () => {
       expect(v.reason).toMatch(/safe integer/)
     }
   })
+
+  it('verifyInvoiceCommitment validates expectedMsats even on the deferral path', () => {
+    // requireDecodable: false must not let malformed expectedMsats slide
+    // through as an ok:true deferral, the same inputs a decodable invoice
+    // refuses must refuse here too.
+    for (const bad of [NaN, Infinity, 1.5]) {
+      const v = verifyInvoiceCommitment({
+        bolt11: 'lnmock1x',
+        paymentHash: SPEC_HASH,
+        expectedMsats: bad,
+        requireDecodable: false,
+      })
+      expect(v.ok).toBe(false)
+      expect(v.reason).toMatch(/safe integer/)
+    }
+    for (const bad of [-5, -5n]) {
+      const v = verifyInvoiceCommitment({
+        bolt11: 'lnmock1x',
+        paymentHash: SPEC_HASH,
+        expectedMsats: bad,
+        requireDecodable: false,
+      })
+      expect(v.ok).toBe(false)
+      expect(v.reason).toMatch(/negative/)
+    }
+  })
 })
 
 describe('cross-validation against light-bolt11-decoder', () => {

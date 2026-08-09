@@ -4,6 +4,22 @@ All notable changes to farrier-kit are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- `isPrivateIpLiteral` no longer fails open on scope-suffixed IPv6 literals:
+  a zone ID (`fe80::1%lo0`, as returned by mDNS, /etc/hosts or a custom
+  `createPinnedFetch` resolve seam) is stripped before classification, and an
+  unparseable string that still looks like an IPv6 literal now classifies as
+  private rather than public.
+- `createPinnedFetch` refuses plaintext `http:` by default. The pin proves you
+  reached the address you resolved, which means nothing on a cleartext channel.
+  Pass the new `allowHttp` option for local development only.
+- `verifyInvoiceCommitment` validates `expectedMsats` before the decode
+  attempt, so the `requireDecodable: false` deferral path refuses NaN,
+  fractional and negative amounts instead of reporting `ok: true`.
+
 ## [1.1.0] - 2026-08-02
 
 ### Added

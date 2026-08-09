@@ -182,12 +182,17 @@ function isPrivateIpv6(h: number[]): boolean {
  * `2130706433`, it will not. Feed such input through `new URL()` first.
  */
 export function isPrivateIpLiteral(hostname: string): boolean {
-  const host = stripHost(hostname)
+  // Drop any scoped-address zone ID (`fe80::1%lo0`): the zone is a local
+  // interface selector, not part of the address class. A scope-suffixed
+  // answer can reach here from a custom resolve seam (mDNS, /etc/hosts).
+  const host = stripHost(hostname).split('%', 1)[0]
   const v4 = parseIpv4(host)
   if (v4) return isPrivateIpv4(v4)
   const v6 = parseIpv6(host)
   if (v6) return isPrivateIpv6(v6)
-  return false
+  // Fail closed: a string that looks like an IPv6 literal but does not parse
+  // is treated as private rather than waved through as public.
+  return host.includes(':')
 }
 
 // Strip surrounding IPv6 brackets, lowercase, and drop ALL trailing dots

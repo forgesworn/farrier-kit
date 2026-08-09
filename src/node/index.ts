@@ -49,6 +49,14 @@ export interface CreatePinnedFetchOptions {
    */
   allowPrivate?: boolean
   /**
+   * Permit plaintext http: URLs. Default false: the pin only proves you are
+   * talking to the address you resolved, and on cleartext an on-path attacker
+   * can answer for it anyway, so HTTP gets a false sense of endpoint
+   * authenticity. Turn this on ONLY for local development, beside
+   * `allowPrivate`, never for untrusted addresses.
+   */
+  allowHttp?: boolean
+  /**
    * Resolve a hostname to its candidate addresses. Defaults to node:dns
    * lookup over all records. A test seam, and an escape hatch for a custom
    * resolver (DoH, a fixed allowlist).
@@ -151,10 +159,14 @@ function toResponse(res: IncomingMessage): Response {
 export function createPinnedFetch(options: CreatePinnedFetchOptions = {}): typeof fetch {
   const resolve = options.resolve ?? defaultResolve
   const allowPrivate = options.allowPrivate ?? false
+  const allowHttp = options.allowHttp ?? false
   const isBlocked = options.isBlockedAddress ?? isPrivateIpLiteral
 
   const pinnedFetch = async (input: string | URL | Request, init: RequestInit = {}): Promise<Response> => {
     const url = new URL(typeof input === 'string' ? input : (input as URL | Request).toString())
+    if (url.protocol === 'http:' && !allowHttp) {
+      throw new PinnedFetchError('BAD_PROTOCOL', 'plaintext http: is refused; pass allowHttp for local development only')
+    }
     if (url.protocol !== 'https:' && url.protocol !== 'http:') {
       throw new PinnedFetchError('BAD_PROTOCOL', `unsupported protocol ${url.protocol}`)
     }
