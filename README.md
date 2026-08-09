@@ -200,8 +200,10 @@ It resolves the hostname once, rejects the request if any answer is private,
 loopback, link-local, reserved, documentation-only or multicast, and connects the
 socket to the one approved address by overriding its DNS lookup, so there is no
 second resolution to race. The TLS SNI, certificate check and HTTP Host header
-stay on the original hostname. It never follows redirects. Pass `allowPrivate:
-true` only for local development against regtest or localhost.
+stay on the original hostname. It never follows redirects, and it is HTTPS-only:
+the pin proves you reached the address you resolved, which means nothing on a
+cleartext channel. Pass `allowPrivate: true` and `allowHttp: true` only for local
+development against regtest or localhost.
 
 ## SSRF: what the guard does and does not do
 
