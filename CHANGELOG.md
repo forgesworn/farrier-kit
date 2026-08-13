@@ -4,6 +4,18 @@ All notable changes to farrier-kit are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-08-13
+
+### Changed
+
+- Define farrier-kit as the narrow Lightning read-and-verify layer: it decodes
+  and validates invoices and proves preimages, while wallet communication,
+  custody, approval policy and retries remain outside this package.
+- Point applications that need Nostr Wallet Connect at the focused,
+  independently versioned `@forgesworn/nwc-kit` package.
+- Pin the release pipeline to audited Anvil v0.10.1 and require strict action
+  pins, lifecycle-script policy and two-runner reproducibility.
+
 ## [1.1.1] - 2026-08-09
 
 ### Fixed
@@ -88,6 +100,8 @@ First release: the audited verification core.
   node-fetch-style bodies, and a NIP-57 zap description-hash binding, along with
   a set of bolt11 parsing footguns.
 
+[1.1.2]: https://github.com/forgesworn/farrier-kit/releases/tag/v1.1.2
+[1.1.1]: https://github.com/forgesworn/farrier-kit/releases/tag/v1.1.1
 [1.1.0]: https://github.com/forgesworn/farrier-kit/releases/tag/v1.1.0
 [1.0.1]: https://github.com/forgesworn/farrier-kit/releases/tag/v1.0.1
 [1.0.0]: https://github.com/forgesworn/farrier-kit/releases/tag/v1.0.0

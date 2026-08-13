@@ -30,35 +30,17 @@ sit on.
 
 ## Next
 
-### 1. Kotlin port checked against the vectors, and the priority
+### Kotlin port checked against the vectors
 
 A native Kotlin build of the pure surface (`bolt11`, `preimage`, SSRF
 classification, Lightning Address parsing) that passes
 [`vectors/*.json`](./vectors). No JS-only competitor can follow this. It makes
 farrier-kit the way a native Android or GrapheneOS app verifies payments the same
 as web, down to the byte. It feeds the mobile clients on the
-[TROTT](https://github.com/TheCryptoDonkey/trott) roadmap.
-
-### 2. `/nwc`, NIP-47 Nostr Wallet Connect
-
-A NIP-47 client with two transport patterns, one-shot for server payouts and a
-persistent session for the browser, plus a wallet-service harness, which the
-ecosystem currently lacks. All on `@noble`, with the official NIP-44 vectors in CI
-and its own conformance vectors. This is the one piece of wallet-toolkit territory
-that stays true to verify-and-settle work rather than turning us into a wallet.
-
-### 3. `/nostr-crypto`
-
-NIP-04 and NIP-44 v2 on `@noble`, checked against the official reference vectors.
-It is the crypto engine under `/nwc`, exported for reuse, so nobody has to pull a
-whole Nostr library just for wallet-connect.
-
-### 4. `/fiat` and `/handles`
-
-- `/fiat`: a BTC price oracle with an ISO-4217 minor-unit table and formatting,
-  injectable fetch, and a TTL cache.
-- `/handles`: Lightning Address and MSISDN validation and canonicalisation, with
-  PII classification for phone-derived addresses.
+[TROTT](https://github.com/TheCryptoDonkey/trott) roadmap. After that, additions
+must strengthen the same read-and-verify job and arrive with independently
+anchored vectors. Wallet communication is deliberately separate in
+[`@forgesworn/nwc-kit`](https://github.com/forgesworn/nwc-kit).
 
 ## What will not change
 
@@ -69,9 +51,10 @@ whole Nostr library just for wallet-connect.
 - Safe by default. The strict checks are on unless you turn them off.
 - Every verifiable surface gets conformance vectors. New modules ship with their
   own locked-in, independently-anchored vectors so ports stay in step.
-- We will not ship a payment sender, WebLN, boostagram, L402, BIP21, or
-  fiat-in-core. If an app needs to send, it depends on a wallet toolkit and uses
-  farrier-kit to verify.
+- We will not ship a payment sender, WebLN, boostagram, L402, BIP21, NWC,
+  general Nostr cryptography, fiat pricing, or unrelated handle formats. If an
+  app needs to send, it depends on a focused wallet client and uses farrier-kit
+  to verify.
 
 ## Versioning
 

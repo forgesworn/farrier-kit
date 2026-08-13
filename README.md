@@ -287,11 +287,12 @@ not guard the fetch. Alby checks none of the four. The value is the combination:
 guarded resolution, the full four-way gate, and preimage verify, in the browser
 and Node from an @noble-only core.
 
-Where the others win, and where you should use them. If you need to send payments,
-zap, or reach a wallet, [@getalby/lightning-tools](https://github.com/getAlby/js-lightning-tools)
-is the one to beat. It is actively maintained, pulls no install dependencies since
-it bundles its own tree, and covers WebLN, NWC, NIP-57 zaps, boostagram, and L402,
-none of which farrier-kit will ever do. If you only need to decode,
+Where the others win, and where you should use them. If you need a focused NIP-47
+client, use [`@forgesworn/nwc-kit`](https://github.com/forgesworn/nwc-kit) and
+keep farrier-kit on both sides of the payment to verify the invoice and returned
+preimage. If you need a broader wallet toolkit, WebLN, NIP-57 zaps, boostagrams,
+or L402 helpers, [@getalby/lightning-tools](https://github.com/getAlby/js-lightning-tools)
+covers that wider surface. None of those jobs belong in farrier-kit. If you only need to decode,
 [light-bolt11-decoder](https://github.com/fiatjaf/light-bolt11-decoder) is smaller
 and more battle-tested, and Alby bundles it anyway. If you need to create or sign
 invoices, use [bolt11](https://github.com/bitcoinjs/bolt11). farrier-kit takes the
@@ -300,12 +301,11 @@ handed you.
 
 ## Roadmap
 
-Shipped so far: the v1.0 core (`/bolt11`, `/preimage`, `/lnurl`, `/http`), an
+Shipped so far: the v1 core (`/bolt11`, `/preimage`, `/lnurl`, `/http`, `/node`), an
 independent security review, and language-neutral conformance vectors. Next up is
 a Kotlin port checked against the vectors, so verification is identical on native
-mobile, then `/nwc` (a NIP-47 client plus a wallet-service harness),
-`/nostr-crypto`, `/fiat`, and `/handles`. New modules land as additive minor
-releases.
+mobile. Wallet communication remains a separate package so this core stays small,
+portable, and independently auditable.
 
 See [ROADMAP.md](./ROADMAP.md) for the full plan and [RELEASING.md](./RELEASING.md)
 for how releases are cut.

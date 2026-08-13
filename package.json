@@ -1,6 +1,6 @@
 {
   "name": "farrier-kit",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Lightning payment primitives that work anywhere: bolt11 decoding, preimage verification, LNURL-pay resolution and timeout-safe JSON fetch. Zero-dependency core on @noble, browser and Node from one codebase.",
   "type": "module",
   "sideEffects": false,
@@ -98,5 +98,10 @@
     "tsup": "^8.3.0",
     "typescript": "^5.7.0",
     "vitest": "^4.0.0"
+  },
+  "overrides": {
+    "tsup": {
+      "esbuild": "^0.28.2"
+    }
   }
 }
