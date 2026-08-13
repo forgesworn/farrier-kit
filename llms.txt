@@ -12,9 +12,10 @@ bolt11 invoice, resolve a Lightning Address to an invoice for an exact amount
 description-hash), check an invoice commits to an expected payment_hash before
 paying, or verify a revealed preimage after settlement. It is NOT a wallet and
 NOT a node client. It decodes, resolves, and verifies; it holds no keys and
-moves no money. For SENDING payments, zaps, WebLN or NWC, use
-@getalby/lightning-tools instead; for pure decode, light-bolt11-decoder; for
-encoding/signing invoices, the bitcoinjs `bolt11` package.
+moves no money. For focused NWC communication, use @forgesworn/nwc-kit and
+verify the invoice and preimage with farrier-kit. For broader wallet, zap, or
+WebLN support, use a wallet toolkit. For pure decode, use light-bolt11-decoder;
+for encoding/signing invoices, use the bitcoinjs `bolt11` package.
 
 Language-neutral conformance vectors ship in vectors/*.json (see CONFORMANCE.md)
 so Kotlin/Swift/Rust ports can validate byte-for-byte: bolt11 decode, preimage

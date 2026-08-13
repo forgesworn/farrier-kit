@@ -114,12 +114,12 @@ Hard-won gotchas:
 ## Non-goals (the moat)
 
 farrier-kit will **never** ship a payment sender, WebLN, boostagram, L402, BIP21,
-fiat-in-core, or NWC-as-a-wallet. If an app needs to send or zap, it depends on a
-wallet toolkit (Alby's `@getalby/lightning-tools`) and uses farrier-kit to
-verify. Staying the small verification layer is the point.
+fiat-in-core, NWC, or general Nostr cryptography. If an app needs focused NIP-47
+wallet communication, it depends on `@forgesworn/nwc-kit` and uses farrier-kit
+to verify the invoice and settlement preimage. Staying the small verification
+layer is the point.
 
 Positioning: farrier-kit is the only JS/TS library that SSRF-guards LNURL
 resolution and gates the resolved invoice on all four of amount, network, expiry,
-and description-hash. Do not chase Alby's breadth. See the README comparison and
-`ROADMAP.md` (Kotlin port next, then `/nwc`, `/nostr-crypto`, `/fiat`, `/handles`,
-all additive minors).
+and description-hash. Do not chase wallet-toolkit breadth. See the README
+comparison and `ROADMAP.md`.
