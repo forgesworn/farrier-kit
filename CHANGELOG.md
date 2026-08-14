@@ -4,6 +4,12 @@ All notable changes to farrier-kit are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-08-14
+
+### Documented
+
+- Add npm funding metadata alongside the repository support links.
+
 ## [1.1.2] - 2026-08-13
 
 ### Changed
