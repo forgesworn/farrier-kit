@@ -1,0 +1,59 @@
+# Deploys the built site to farrier-kit.forgesworn.dev — the shared Hetzner "routing"
+# box, same rsync pattern as heartwood's and cambium's deploy-site. Those two
+# rsync site/ directly because they are hand-written static files; this one
+# builds first and ships docs/, because site/ here is TypeScript source.
+#
+# The Caddy vhost is installed on the box separately: site/deploy/farrier-kit.Caddyfile
+#
+# Requires the HETZNER_SSH_KEY repository secret (the deploy@95.217.39.110
+# private key, as used by cambium's and heartwood's deploy-site workflows).
+name: Deploy site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "site/**"
+      - "docs/**"
+      - ".github/workflows/deploy-site.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Build rather than trust the committed docs/. CI checks the two agree,
+      # but CI and this workflow are separate jobs: a push whose docs/ was
+      # never rebuilt would fail there and still deploy stale content here.
+      - run: npm ci
+      - run: npm run build:site
+
+      - name: Deploy to Hetzner
+        env:
+          HETZNER_SSH_KEY: ${{ secrets.HETZNER_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "$HETZNER_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Pinned host keys for 95.217.39.110 (captured with ssh-keyscan on
+          # 2026-08-19), matching heartwood's deploy workflow — no per-run
+          # TOFU, under which a MITM during the scan could redirect the rsync.
+          # If the box is reinstalled, re-scan deliberately and update these.
+          cat > ~/.ssh/known_hosts <<'KEYS'
+          95.217.39.110 ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBIvyQS88Q/dHmMqiHA5nlSZ36QoLg8iMJxGAFRxcCatkweNgbz/agQ71UTdf/UQlSu0EebJkyVRAHMrwL/lPB8Y=
+          95.217.39.110 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILClsLCThi06mGvX7qW0RPSzt4UoZsEgdc79drRvMc6n
+          95.217.39.110 ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDSyyA3UaBvMmn9mCEsRqLkH7RV4POorSVkPcYv83yULffRsgmS74vmEkE3vOBLCfZERCsT9kkcEnLAXl8ccw+Ai4+XEDjbpHLL/27e+dFS3KFprZq7YWUBr40jn7DpyuK+fgo1gK5iiKQAozaEXYsdS8orifBg0Y1+ZBe6oaViduOCY3MTUFHes7nvaxn4VKjQBvudTTXTzj1YdtHOg7wd70rSrSvgjSGicGFCBPojryFtkwMsw+ljlsFiBOw4VhZRGb9AVlEZSyvVzTHOoTLkB6l5FurOJ8ZIprR8l5oN2+jc0kEkeBUSYLYkTA2RwxaNv0N2oTdOmLtFljwUbbJoFBDZ7zm+j+tmLcyYIUzi6OtDODEjthgNkN5/duWXFMfRwcrAsZwde+N4AuQBjRJ9XwG0MxRJdpx9rHoQKXUiKUm1G59sd99wj9f+gLoi+nPi85qbakEEUR7O1+56oPT3jvmCt3cfXrlbo+U2faaLLptOnqeVLI2uN09461ZzVVk=
+          KEYS
+          rsync -avz --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            docs/ deploy@95.217.39.110:/opt/farrier-kit/
