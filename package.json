@@ -65,7 +65,7 @@
     "type": "git",
     "url": "git+https://github.com/forgesworn/farrier-kit.git"
   },
-  "homepage": "https://github.com/forgesworn/farrier-kit#readme",
+  "homepage": "https://farrier-kit.forgesworn.dev",
   "bugs": {
     "url": "https://github.com/forgesworn/farrier-kit/issues"
   },

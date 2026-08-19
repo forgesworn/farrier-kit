@@ -22,6 +22,12 @@ so Kotlin/Swift/Rust ports can validate byte-for-byte: bolt11 decode, preimage
 (SHA-256), Lightning Address parse, SSRF IP classification, description-hash.
 amountMsats is a decimal string in the vectors (may exceed 2^53).
 
+## Live demo
+
+https://farrier-kit.forgesworn.dev runs this library in the browser: BOLT-11
+decoding, preimage verification, the URL/SSRF gate, and the full conformance
+vector set executed against the shipped bundle. Static page, no network calls.
+
 ## Install
 
 npm install farrier-kit

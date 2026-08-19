@@ -18,6 +18,10 @@ can verify payments the same way.
 It is not a wallet and not a node client. It holds no keys and moves no money. It
 decodes, resolves, and verifies.
 
+**[Try it without installing anything](https://farrier-kit.forgesworn.dev)** — the
+bench runs this library in your browser: decode an invoice, prove a preimage, gate
+a URL, and run the conformance vectors against the same bundle npm would give you.
+
 ## Modules
 
 | Import | What it does |
