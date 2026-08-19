@@ -29,6 +29,13 @@ jobs:
       - run: npm run build
       - name: Browser bundle gate (esbuild must resolve with no node builtins)
         run: npm run check:browser-bundle
+      - run: npm run typecheck:site
+      # The bench imports ../src directly and claims on the page to be the
+      # shipped code. These two steps are what keep that claim true.
+      - name: Bench site still builds
+        run: npm run build:site
+      - name: Committed site output is up to date
+        run: git diff --exit-code -- docs
 
   # Consumers on the oldest supported Node consume dist, not our test runner.
   consume-node18:

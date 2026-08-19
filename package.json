@@ -50,13 +50,15 @@
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
+    "typecheck:site": "tsc --noEmit -p site/tsconfig.json",
     "test": "vitest run",
     "test:vectors": "vitest run vectors/vectors.test.ts",
     "test:watch": "vitest",
     "check:no-node-imports": "! grep -rEn \"from ['\\\"]node:|require\\(['\\\"]node:\" src --include='*.ts' --exclude='*.test.ts' --exclude-dir=node",
     "check:browser-bundle": "esbuild dist/index.js --bundle --platform=browser --outfile=/dev/null --log-level=error",
     "vectors": "node scripts/gen-vectors.mjs",
-    "prepublishOnly": "npm run typecheck && npm run check:no-node-imports && npm run test && npm run build && npm run check:browser-bundle"
+    "prepublishOnly": "npm run typecheck && npm run check:no-node-imports && npm run test && npm run build && npm run check:browser-bundle",
+    "build:site": "node scripts/build-site.mjs"
   },
   "repository": {
     "type": "git",

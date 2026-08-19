@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>farrier-kit — decode it, verify it, then believe it</title>
+<meta name="description" content="Lightning payment primitives that work anywhere: BOLT-11 decoding, constant-time preimage verification, LNURL-pay resolution and an SSRF-guarded fetch. Zero-dependency core on @noble, browser and Node from one codebase, with language-neutral conformance vectors.">
+<meta name="theme-color" content="#0c0d10">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta property="og:title" content="farrier-kit">
+<meta property="og:description" content="The verification layer for Lightning. Decode an invoice, prove a preimage, gate a URL — in your browser, against the shipped bundle.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://farrier-kit.forgesworn.dev/">
+<link rel="canonical" href="https://farrier-kit.forgesworn.dev/">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<link rel="preload" href="./fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="./fonts/fraunces-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="./fonts/jetbrains-mono-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="wrap masthead-inner">
+    <a class="wordmark" href="#top">
+      <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" fill="none"
+           stroke="currentColor" stroke-width="3" stroke-linecap="round">
+        <path d="M6.5 20.5V12a5.5 5.5 0 0 1 11 0v8.5"/>
+      </svg>
+      <span>FARRIER-KIT</span>
+    </a>
+    <nav class="masthead-nav" aria-label="Sections">
+      <a href="#bench">The bench</a>
+      <a href="#vectors">Vectors</a>
+      <a class="nav-mobile-hide" href="#refuses">Scope</a>
+      <a class="ext" href="https://github.com/forgesworn/farrier-kit">GitHub</a>
+      <a class="ext nav-mobile-hide" href="https://www.npmjs.com/package/farrier-kit">npm</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+<!-- ======================= HERO ======================= -->
+<section class="hero">
+  <p class="kicker reveal r1">Lightning payment primitives · v1.1.3</p>
+  <h1 class="reveal r2">Decode it. Prove it.<br><em>Then</em> believe it.</h1>
+  <p class="lede reveal r3">
+    <strong>farrier-kit</strong> is the read-and-verify layer for Lightning: what an
+    invoice commits to, whether a preimage proves it was paid, and whether a URL is
+    safe to fetch. Browser and Node run the same code, and the bench below is that
+    code, in your browser, right now.
+  </p>
+  <div class="cta-row reveal r4">
+    <a class="btn btn-primary" href="#bench">Use the bench</a>
+    <code class="install">npm install farrier-kit</code>
+  </div>
+  <p class="hero-meta reveal r4">
+    One runtime dependency (@noble/hashes) &nbsp;·&nbsp; ESM and CJS
+    &nbsp;·&nbsp; independently security-reviewed &nbsp;·&nbsp; MIT
+  </p>
+</section>
+
+<!-- ======================= THE BENCH ======================= -->
+<section class="bench" id="bench">
+  <div class="bench-frame">
+    <div class="bench-tabs" role="tablist" aria-label="Tools">
+      <button role="tab" data-tool="decode" aria-selected="true">Decode an invoice</button>
+      <button role="tab" data-tool="preimage" aria-selected="false">Prove a payment</button>
+      <button role="tab" data-tool="commit" aria-selected="false">Gate a payment</button>
+      <button role="tab" data-tool="url" aria-selected="false">Gate a URL</button>
+    </div>
+
+    <!-- decode -->
+    <div class="bench-panel" data-panel="decode">
+      <div class="bench-in">
+        <label class="field">
+          <span>BOLT-11 invoice</span>
+          <textarea id="decode-input" rows="7" spellcheck="false" autocomplete="off"
+                    placeholder="lnbc…"></textarea>
+        </label>
+        <div class="btn-row">
+          <button id="decode-sample" class="btn btn-ghost">Load a sample</button>
+          <button id="decode-clear" class="btn btn-quiet">Clear</button>
+        </div>
+        <p class="hint">
+          The sample is a BOLT-11 specification vector: unsigned, long expired and
+          worth nothing. Change one character of it and watch the checksum refuse.
+        </p>
+      </div>
+      <div class="bench-out" id="decode-out"></div>
+    </div>
+
+    <!-- preimage -->
+    <div class="bench-panel" data-panel="preimage" hidden>
+      <div class="bench-in">
+        <label class="field">
+          <span>Preimage (32-byte hex)</span>
+          <input id="preimage-input" type="text" spellcheck="false" autocomplete="off" placeholder="64 hex characters">
+        </label>
+        <label class="field">
+          <span>Committed payment_hash</span>
+          <input id="hash-input" type="text" spellcheck="false" autocomplete="off" placeholder="64 hex characters">
+        </label>
+        <div class="btn-row">
+          <button id="preimage-generate" class="btn btn-ghost">Generate a matching pair</button>
+        </div>
+        <p class="hint">
+          Generate a pair, then change one character of either field. The comparison is
+          constant-time, so a near-miss takes exactly as long to reject as a wild one.
+        </p>
+      </div>
+      <div class="bench-out" id="preimage-out"></div>
+    </div>
+
+    <!-- commitment -->
+    <div class="bench-panel" data-panel="commit" hidden>
+      <div class="bench-in">
+        <label class="field">
+          <span>Invoice you are about to pay</span>
+          <textarea id="commit-invoice" rows="5" spellcheck="false" autocomplete="off" placeholder="lnbc…"></textarea>
+        </label>
+        <label class="field">
+          <span>payment_hash you agreed</span>
+          <input id="commit-hash" type="text" spellcheck="false" autocomplete="off" placeholder="64 hex characters">
+        </label>
+        <label class="field">
+          <span>Amount you agreed (millisatoshis)</span>
+          <input id="commit-msats" type="text" inputmode="numeric" spellcheck="false" autocomplete="off" placeholder="250000000">
+        </label>
+        <div class="btn-row">
+          <button id="commit-sample" class="btn btn-ghost">Load a matching set</button>
+        </div>
+        <p class="hint">
+          Load the set, then change the amount. The hash still matches and the gate still
+          refuses, which is the entire point of the amount check.
+        </p>
+      </div>
+      <div class="bench-out" id="commit-out"></div>
+    </div>
+
+    <!-- url gate -->
+    <div class="bench-panel" data-panel="url" hidden>
+      <div class="bench-in">
+        <label class="field">
+          <span>URL or Lightning Address</span>
+          <input id="url-input" type="text" spellcheck="false" autocomplete="off" placeholder="https://wallet.example.com/… or alice@wallet.example.com">
+        </label>
+        <p class="hint">
+          Try <code>http://example.com</code>, <code>https://10.0.0.1/x</code>,
+          <code>https://user:pw@example.com</code>, <code>https://localhost./x</code>,
+          or <code>alice@Wallet.Example.COM</code>.
+        </p>
+      </div>
+      <div class="bench-out" id="url-out"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= VECTORS ======================= -->
+<section class="section" id="vectors">
+  <div class="section-head">
+    <span class="section-no">01</span>
+    <h2>The vectors, run here, now</h2>
+  </div>
+  <div class="section-body">
+    <p class="section-lede">
+      farrier-kit ships language-neutral conformance vectors so a port can prove it
+      agrees byte for byte. They are not a private test fixture: they are the contract,
+      and this button runs the whole file set against the bundle you would install.
+    </p>
+  </div>
+
+  <div class="vec-actions">
+    <button id="vec-run" class="btn btn-primary">Run the vectors</button>
+    <span id="vec-total" class="vec-total">not run yet</span>
+  </div>
+
+  <div class="vec-rows" id="vec-rows"></div>
+
+  <p class="aside">
+    <strong>Tier 1 is correctness, tier 2 is policy.</strong> A conformant decoder must
+    match tier 1. Tier 2 is farrier-kit refusing things the spec merely leaves open — an
+    ambiguous amount in the human-readable part, a numeric field that would overflow —
+    and a port that wants security parity should match those too. The next milestone is a
+    Kotlin build of the pure surface checked against these same files, so a native
+    Android app verifies a payment identically to the web.
+  </p>
+
+  <p class="doc-links">
+    <a href="https://github.com/forgesworn/farrier-kit/blob/main/CONFORMANCE.md">Porting guide</a>
+    <a href="https://github.com/forgesworn/farrier-kit/tree/main/vectors">The vector files</a>
+  </p>
+</section>
+
+<!-- ======================= SCOPE ======================= -->
+<section class="section" id="refuses">
+  <div class="section-head">
+    <span class="section-no">02</span>
+    <h2>The narrow slice</h2>
+  </div>
+  <div class="section-body">
+    <p class="section-lede">
+      Most Lightning libraries either just decode invoices or are whole wallet toolkits.
+      farrier-kit takes the security-critical gap they leave: safely resolving where to
+      pay, and proving that a payment happened.
+    </p>
+  </div>
+
+  <dl class="spec-rows">
+    <div class="spec-row">
+      <dt><code>/bolt11</code></dt>
+      <dd>
+        Amount, payment hash, network, expiry, description and description hash. No
+        signature recovery and no route hints, because a payer's wallet does that. It
+        answers one question: what does this invoice commit to?
+      </dd>
+    </div>
+    <div class="spec-row">
+      <dt><code>/preimage</code></dt>
+      <dd>
+        <code>payment_hash = SHA-256(preimage)</code>, compared in constant time. This is
+        the only thing that proves a payment settled, and it is the check most
+        integrations skip.
+      </dd>
+    </div>
+    <div class="spec-row">
+      <dt><code>/lnurl</code></dt>
+      <dd>
+        LUD-06 and LUD-16 resolution, LUD-21 verification, an SSRF guard and a four-way
+        gate on the invoice that comes back — amount, description hash, network and
+        payment hash all checked before it reaches you.
+      </dd>
+    </div>
+    <div class="spec-row">
+      <dt><code>/http</code></dt>
+      <dd>
+        A timeout- and size-capped, redirect-safe JSON fetch. Every one of those limits
+        exists because an untrusted endpoint is on the other end.
+      </dd>
+    </div>
+    <div class="spec-row">
+      <dt><code>/node</code></dt>
+      <dd>
+        The one Node-only entry: DNS-pinned fetch, so a hostname that resolves inward is
+        caught where the browser cannot look. Gated out of the browser bundle and never
+        reachable from the root.
+      </dd>
+    </div>
+  </dl>
+
+  <div class="section-body section-gap">
+    <h3>Not in scope, deliberately</h3>
+    <ul class="ticks">
+      <li>Sending a payment, or any wallet function</li>
+      <li>WebLN, boostagrams, L402, BIP-21</li>
+      <li>NWC and wallet transport — that is <a href="https://nwc-kit.forgesworn.dev">nwc-kit</a></li>
+      <li>General Nostr cryptography</li>
+      <li>Fiat pricing and unrelated handle formats</li>
+    </ul>
+  </div>
+
+  <p class="aside">
+    <strong>An invoice's payment_hash alone is not a commitment.</strong> The payee picks
+    the preimage, so they can mint a second invoice carrying the same hash and a different
+    amount. Pass the agreed amount to <code>verifyInvoiceCommitment</code> whenever real
+    money is about to move; the bench's third tab exists to make that failure visible.
+  </p>
+</section>
+
+<!-- ======================= THE RAIL ======================= -->
+<section class="section" id="rail">
+  <div class="section-head">
+    <span class="section-no">§</span>
+    <h2>The rest of the rail</h2>
+  </div>
+  <div class="section-body">
+    <p class="section-lede">
+      Each of these does one job and refuses the next one. Together they are a payment rail
+      an application can assemble itself, without any single piece asking to be trusted
+      with everything.
+    </p>
+  </div>
+
+  <div class="family-row">
+    <span class="family-card current">
+      <span class="family-ring ring-farrier"></span>
+      <h3>farrier-kit</h3>
+      <p>The money checks. Decode, prove, and gate what you are about to fetch. You are here.</p>
+      <span class="npm">farrier-kit</span>
+    </span>
+    <a class="family-card" href="https://nwc-kit.forgesworn.dev">
+      <span class="family-ring ring-nwc"></span>
+      <h3>nwc-kit</h3>
+      <p>The wallet connection. NIP-47 over NIP-44 v2, authenticated, with the relay untrusted.</p>
+      <span class="npm">@forgesworn/nwc-kit</span>
+    </a>
+    <a class="family-card" href="https://github.com/forgesworn/toll-booth">
+      <span class="family-ring ring-toll"></span>
+      <h3>toll-booth</h3>
+      <p>The other side of the counter. L402 middleware that makes any API payable in one line.</p>
+      <span class="npm">@forgesworn/toll-booth</span>
+    </a>
+    <a class="family-card" href="https://github.com/forgesworn/402-mcp">
+      <span class="family-ring ring-mcp"></span>
+      <h3>402-mcp</h3>
+      <p>The agent's end. Discovers, pays for and consumes L402 APIs across the rail.</p>
+      <span class="npm">402-mcp</span>
+    </a>
+  </div>
+</section>
+
+</main>
+
+<footer class="colophon">
+  <p class="colophon-links">
+    <a href="https://github.com/forgesworn/farrier-kit">Source</a> ·
+    <a href="https://www.npmjs.com/package/farrier-kit">npm</a> ·
+    <a href="https://github.com/forgesworn/farrier-kit/blob/main/CONFORMANCE.md">Conformance</a> ·
+    <a href="https://github.com/forgesworn/farrier-kit/blob/main/ROADMAP.md">Roadmap</a> ·
+    <a href="https://github.com/forgesworn/farrier-kit/blob/main/CHANGELOG.md">Changelog</a> ·
+    <a href="https://forgesworn.dev">forgesworn.dev</a>
+  </p>
+  <p class="colophon-note">
+    MIT licence. No cookies, no analytics, no third-party requests; the fonts are served
+    from this domain. The bench is the library itself, and its content security policy
+    sets <code>connect-src 'none'</code>, so this page cannot make a network request even
+    if it wanted to. Nothing you paste in leaves the browser.
+  </p>
+</footer>
+
+<script type="module" src="./bench.js"></script>
+</body>
+</html>
