@@ -58,7 +58,8 @@
     "check:browser-bundle": "esbuild dist/index.js --bundle --platform=browser --outfile=/dev/null --log-level=error",
     "vectors": "node scripts/gen-vectors.mjs",
     "prepublishOnly": "npm run typecheck && npm run check:no-node-imports && npm run test && npm run build && npm run check:browser-bundle",
-    "build:site": "node scripts/build-site.mjs"
+    "build:site": "node scripts/build-site.mjs",
+    "check": "npm run typecheck && npm run typecheck:site && npm run check:no-node-imports && npm test && npm run build && npm run check:browser-bundle && npm run build:site && npm audit"
   },
   "repository": {
     "type": "git",
