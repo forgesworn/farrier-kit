@@ -90,7 +90,8 @@ Security: audited (three reviewers + a Codex cross-check). Do NOT weaken the
 SSRF guard (`isPrivateIpLiteral`, `assertResolvableUrl`) or
 `verifyInvoiceCommitment` without a fresh adversarial review and a regression
 test. The guard classifies IP literals only; a hostname resolving inward needs
-the consumer's `urlGuard`.
+`fetchImpl: createPinnedFetch()` from `farrier-kit/node`. `urlGuard` is only an
+extra check and cannot close DNS rebinding.
 
 ## Releasing (via forgesworn/anvil)
 

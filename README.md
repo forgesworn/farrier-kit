@@ -18,7 +18,7 @@ can verify payments the same way.
 It is not a wallet and not a node client. It holds no keys and moves no money. It
 decodes, resolves, and verifies.
 
-**[Try it without installing anything](https://farrier-kit.forgesworn.dev)** — the
+**[Try it without installing anything](https://farrier-kit.forgesworn.dev)**: the
 bench runs this library in your browser: decode an invoice, prove a preimage, gate
 a URL, and run the conformance vectors against the same bundle npm would give you.
 
@@ -26,11 +26,12 @@ a URL, and run the conformance vectors against the same bundle npm would give yo
 
 | Import | What it does |
 |--------|--------------|
-| [`farrier-kit/bolt11`](#bolt11) | Decode a BOLT-11 invoice: payment hash, amount, description, expiry, network. Checksum-verified, without pulling in a node library to read two fields. |
+| [`farrier-kit/bolt11`](#bolt11) | Decode a BOLT-11 invoice: payment hash, amount, description, expiry, network. The bech32 checksum is verified, the invoice signature is not, and you do not need a node library to read two fields. |
 | [`farrier-kit/preimage`](#preimage) | `payment_hash = SHA-256(preimage)`: generate, hash, verify in constant time. |
 | [`farrier-kit/lnurl`](#lnurl) | Lightning Address to invoice (LUD-06/16), LUD-21 verify, capability probing. The fetch is SSRF-guarded and the invoice you get back is checked for amount, network, expiry, and description-hash. |
 | [`farrier-kit/http`](#http) | `fetchJson` with a hard timeout, a response-size cap, and a redirect default that does not bounce you inward. |
 | [`farrier-kit/node`](#node) | Node-only. A DNS-pinned `fetch` for resolving untrusted LNURL hosts on a server: it resolves once, refuses any private answer, and pins the socket to the approved address so a rebinding race cannot swap in an internal one. |
+| `farrier-kit` (root) | Re-exports every export of `bolt11`, `preimage`, `http` and `lnurl`, values and types, and nothing from `node`. It stays browser-safe. `createPinnedFetch` and `PinnedFetchError` are only available from `farrier-kit/node`. The [API reference](#api-reference) lists each name. |
 
 ## Install
 
@@ -40,6 +41,38 @@ npm install farrier-kit
 
 Node 18 or newer. Dual ESM and CJS, with TypeScript types. No configuration and no
 build step in the consumer.
+
+## Quickstart
+
+This runs as written. The invoice is the `with-description-and-expiry` vector from
+[`vectors/bolt11.json`](./vectors/bolt11.json): a mainnet invoice for 250,000 sats
+with a synthetic zero signature, so it is for testing and can never be paid.
+`decodeBolt11` does not read the signature, but a signature-verifying decoder will
+reject this one.
+
+```js
+import { decodeBolt11, verifyInvoiceCommitment } from 'farrier-kit/bolt11'
+import { generatePreimage, computePaymentHash, verifyPreimage } from 'farrier-kit/preimage'
+
+const invoice =
+  'lnbc2500u1pj48ugqpp55xs6rgdp5xs6rgdp5xs6rgdp5xs6rgdp5xs6rgdp5xs6rgdp5xssdqdxysxxmmxvejk2xqzpuqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq02rq0p'
+// The payment_hash you expect the invoice to commit to, from your own records.
+const expectedHash = 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1'
+
+const inv = decodeBolt11(invoice)
+inv.amountMsats // 250000000n
+inv.description // '1 coffee'
+
+// Before paying: the hash and the exact amount must both match (mainnet is the default).
+const check = verifyInvoiceCommitment({ bolt11: invoice, paymentHash: expectedHash, expectedMsats: 250000000n })
+if (!check.ok) throw new Error(check.reason)
+
+// After paying: the counterparty reveals the preimage. A preimage and its hash are
+// both 64-character hex strings. Here we mint our own pair to show the shape.
+const preimage = generatePreimage()
+const paymentHash = computePaymentHash(preimage)
+verifyPreimage(preimage, paymentHash) // true
+```
 
 ## Design rules
 
@@ -58,7 +91,8 @@ two.
    `light-bolt11-decoder` and the BOLT-11 spec vector, preimage hashing against a
    second SHA-256, and the whole verifiable surface is pinned by
    [conformance vectors](./CONFORMANCE.md).
-6. Safe by default. The LNURL path refuses non-HTTPS, credentials, private IPs,
+6. Safe by default. The LNURL path refuses non-HTTPS, credentials, private IP
+   literals (a hostname that resolves inward needs `createPinnedFetch`),
    redirects, and oversized bodies without being asked.
 
 ## How resolution and verification fit together
@@ -69,7 +103,7 @@ you ever see it.
 
 ```mermaid
 flowchart TD
-  A["resolveLnurlPay({ address, amountSats })"] --> G1{"guard: HTTPS,<br/>public host,<br/>no private IP"}
+  A["resolveLnurlPay({ address, amountSats })"] --> G1{"guard: HTTPS,<br/>public host,<br/>no private IP literal"}
   G1 -->|ok| M["GET /.well-known/lnurlp/name"]
   G1 -->|violation| X(("throw<br/>LnurlError"))
   M --> C{"payRequest?<br/>amount in range?"}
@@ -108,8 +142,9 @@ sequenceDiagram
 ```js
 import { decodeBolt11, verifyInvoiceCommitment } from 'farrier-kit/bolt11'
 
-const inv = decodeBolt11('lnbc2500u1p...')
-inv.paymentHashHex // '0001…0102'
+// `invoice` and `expectedHash` are the values defined in the Quickstart.
+const inv = decodeBolt11(invoice)
+inv.paymentHashHex // 'a1a1…a1a1' (lowercase hex)
 inv.amountMsats    // 250000000n  (bigint, null when amountless)
 inv.amountSats     // 250000      (null when not a whole satoshi)
 inv.network        // 'bc' | 'tb' | 'tbs' | 'bcrt' | 'sb'
@@ -120,28 +155,84 @@ inv.expirySeconds  // 60 (spec default 3600 when absent)
 // amount. Pass expectedMsats, and rely on the default mainnet network, when money
 // is about to move.
 const check = verifyInvoiceCommitment({
-  bolt11,
+  bolt11: invoice,
   paymentHash: expectedHash,
   expectedMsats: 250000000n,
 })
 if (!check.ok) throw new Error(check.reason)
 ```
 
+`decodeBolt11` does not verify the invoice signature or parse route hints. It
+checks the bech32 checksum and reads the fields, so a decoded invoice is not
+authenticated as coming from any particular node. It is a reader, not a wallet.
+
 `decodeBolt11` throws a `Bolt11Error` with a machine-readable `code` on anything
 that is not a checksum-valid invoice carrying a payment hash. When "not an
 invoice" is expected input, use `tryDecodeBolt11`, which returns `null`, or the
 single-field helpers `bolt11PaymentHash` and `bolt11AmountMsats`.
 
+`verifyInvoiceCommitment` takes these options and returns a verdict
+`{ ok, verified?, reason?, amountMsats?, network? }`:
+
+| Option | Default | Meaning |
+|--------|---------|---------|
+| `bolt11` | required | The invoice string. |
+| `paymentHash` | required | The expected payment hash, 64-character hex, either case. |
+| `expectedMsats` | none | `bigint` or safe-integer `number`. When given, the invoice amount must equal it exactly and an amountless invoice is refused. Without it the amount is not checked, so read `verdict.amountMsats` yourself. |
+| `network` | `'bc'` | The required network. Pass `null` to accept any (dev and regtest only). |
+| `requireDecodable` | `true` | When `false`, an undecodable invoice returns `{ ok: true, verified: false }`, deferred to the preimage check. Never treat that as safe to pay. |
+
+It checks hash, network and amount only. It does not check expiry or the
+description hash; `resolveLnurlPay` does both.
+
+`Bolt11Error.code` is one of:
+
+| Code | Thrown when |
+|------|-------------|
+| `NOT_INVOICE` | The input does not start with `ln`. |
+| `BAD_BECH32` | Not valid bech32: charset, mixed case or checksum. |
+| `BAD_HRP` | The prefix is not `ln`, a network (`bc`, `tb`, `tbs`, `bcrt`, `sb`) and an optional amount. |
+| `BAD_AMOUNT` | A pico-BTC amount is not a whole millisatoshi, the amount exceeds the 21M BTC supply, or `msatsToSatsFloor` got a non-finite or negative value. |
+| `OVERFLOW` | `msatsToSatsFloor` result exceeds `Number.MAX_SAFE_INTEGER` sats. |
+| `TRUNCATED` | Shorter than a timestamp plus a signature. |
+| `BAD_TAG` | A tag runs past the end of the invoice, or a numeric tag is too long, out of range or does not regroup to bytes. |
+| `BAD_PAYMENT_HASH` | The `p` tag is not a clean 32-byte field. |
+| `MISSING_PAYMENT_HASH` | The invoice carries no `p` tag. |
+
 ## preimage
+
+Every preimage and payment hash in this module is a 64-character hex string (32
+bytes), never a `Uint8Array`. Input may be either case and output is always
+lowercase.
 
 ```js
 import { generatePreimage, computePaymentHash, verifyPreimage } from 'farrier-kit/preimage'
 
-const preimage = generatePreimage()
-const paymentHash = computePaymentHash(preimage)
+const preimage = generatePreimage()               // string, 64-char hex
+const paymentHash = computePaymentHash(preimage)  // string, 64-char hex
 // ... the invoice settles and the counterparty reveals the preimage ...
+const revealed = preimage // in real use, the string the counterparty handed you
 verifyPreimage(revealed, paymentHash) // constant-time true or false
 ```
+
+```ts
+isValidHex64(value: string): boolean
+generatePreimage(entropy?: string): string
+computePaymentHash(preimage: string): string
+verifyPreimage(preimage: string, expectedHash: string): boolean
+explainPreimage({ preimage, paymentHash }: { preimage: string; paymentHash: string }): { ok: boolean; reason?: string }
+```
+
+`generatePreimage` and `computePaymentHash` throw a plain `Error` on a value that
+is not 64-character hex; `generatePreimage(entropy)` returns the lowercased
+`entropy` rather than random bytes. `verifyPreimage` never throws: it returns
+`false` for malformed input as well as for a mismatch. Use `explainPreimage` when
+you want the reason.
+
+Naming is not uniform across modules, but the type is. `paymentHash` (in
+`verifyInvoiceCommitment` and `explainPreimage`; `verifyPreimage` calls it
+`expectedHash`) and `paymentHashHex` (on a decoded invoice, on a resolved LNURL
+result and in `verifyLud21`) are the same 64-character hex string.
 
 The signatures line up with [escrow-kit](https://github.com/forgesworn/escrow-kit),
 so that library can adopt these by re-export.
@@ -157,12 +248,88 @@ import { resolveLnurlPay, verifyLud21 } from 'farrier-kit/lnurl'
 const paid = await resolveLnurlPay({ address: 'alice@wallet.example.com', amountSats: 21000 })
 paid.bolt11         // hand to any wallet
 paid.paymentHashHex // verify the revealed preimage against this
-paid.verifyUrl      // LUD-21, origin-bound to the callback, when offered
+paid.verifyUrl      // LUD-21, origin-bound to the callback, null when not offered
 
 // LUD-21 settlement check. verified is true only when a returned preimage
 // cryptographically matches. settled on its own is the service's word, not proof.
-const status = await verifyLud21({ verifyUrl: paid.verifyUrl, paymentHashHex: paid.paymentHashHex })
+if (paid.verifyUrl) {
+  const status = await verifyLud21({ verifyUrl: paid.verifyUrl, paymentHashHex: paid.paymentHashHex })
+  status.verified // boolean
+}
 ```
+
+`resolveLnurlPay` resolves to `{ address, amountMsats, amountSats, bolt11,
+paymentHashHex, verifyUrl, zap, metadata }`. `address` is the canonical
+lowercased form, or `null` when you passed `lnurlpUrl`. `amountMsats` is a
+`bigint` and `amountSats` is `null` unless the amount is whole. `zap` is `true`
+when your `nostr` zap request was attached to the callback. `metadata` is the
+service's LUD-06 response:
+`{ tag, callback, minSendable, maxSendable, commentAllowed, allowsNostr, nostrPubkey, metadata }`,
+where `minSendable` and `maxSendable` are millisatoshis as `number` and the last
+`metadata` is the raw JSON string that the description hash commits to.
+
+`verifyLud21` resolves to `{ settled, preimage, verified }`: `settled` is whether
+the service says the invoice is paid, `preimage` is what it returned (or `null`),
+and `verified` is `true` only when `settled` is true, a preimage came back, you
+passed `paymentHashHex`, and `SHA-256(preimage)` equals it.
+
+### The invoice gate and its options
+
+Amount is always checked and cannot be turned off. The other checks run by
+default and each has one opt-out. The SSRF guard has no opt-out at all.
+
+| Option | Default | Opt-out | Effect |
+|--------|---------|---------|--------|
+| `network` | `'bc'` (mainnet) | `network: null` | The invoice must be on this network, else `NETWORK_MISMATCH`. |
+| `rejectExpired` | `true` | `rejectExpired: false` | An expired invoice throws `INVOICE_EXPIRED`. `expirySlackSeconds` (default `60`) is the clock-skew allowance and `nowSeconds` injects the clock. |
+| `verifyDescriptionHash` | `true` | `verifyDescriptionHash: false` | When the invoice has an `h` tag and the service returned a metadata string, the tag must equal SHA-256 of that string, else `DESCRIPTION_HASH_MISMATCH`. For a zap (`nostr` attached) the `h` tag is required and must equal SHA-256 of the zap request. An invoice with no `h` tag passes for a non-zap. |
+| `urlGuard` | none | omit it | An extra check on every URL, sync or async, run after the built-in guard. It adds to the guard and cannot replace it. It does not close DNS rebinding; use `createPinnedFetch` for that. |
+
+`nostr` is a `string`: the JSON-encoded signed NIP-57 zap request. It is attached
+only when the service sets `allowsNostr` and a `nostrPubkey`; otherwise it is
+ignored. When a zap is attached, `comment` is not sent. `comment` is truncated to
+the service's `commentAllowed`, counted in code points.
+
+Pass either `amountSats` or `amountMsats` (a positive integer; `amountMsats` wins
+if both are given), and either `address` or `lnurlpUrl` (`address` wins if both
+are given). Network and HTTP failures from `fetchJson` propagate unwrapped
+(`HttpError`, `ResponseTooLargeError`, a plain `Error` on timeout). The service's
+response is capped at 256 KiB.
+
+`LnurlError.code` is one of:
+
+| Code | Thrown when |
+|------|-------------|
+| `BAD_ADDRESS` | Not `name@domain`, a local domain (`localhost`, `.local`, `.localhost`), or neither `address` nor `lnurlpUrl` given. |
+| `BAD_URL` | A URL is not HTTPS, carries credentials, uses a local host (`localhost`, `.local`, `.internal`, `.localhost`, `.home.arpa`), is a private or reserved IP literal, or the callback is not a URL. |
+| `BAD_AMOUNT` | `amountSats` or `amountMsats` is missing, not an integer, or not positive. |
+| `SERVICE_ERROR` | The service answered `status: 'ERROR'`; the message is its `reason`. |
+| `NOT_PAYREQUEST` | The endpoint's `tag` is not `payRequest`. |
+| `NO_CALLBACK` | The LNURL-pay response has no callback. |
+| `BELOW_MIN`, `ABOVE_MAX` | The amount is outside the service's `minSendable` or `maxSendable`. |
+| `NO_INVOICE` | The callback returned no `pr`. |
+| `BAD_INVOICE` | The returned invoice does not decode. |
+| `AMOUNT_MISMATCH` | The invoice is amountless or for a different amount than requested. |
+| `NETWORK_MISMATCH` | The invoice is on another network. |
+| `INVOICE_EXPIRED` | The invoice has expired, beyond `expirySlackSeconds`. |
+| `DESCRIPTION_HASH_MISMATCH` | The `h` tag does not commit to the metadata or the zap request. |
+
+`createCapabilityProbe` answers "can this address take N sats, with a comment, as
+a zap?" from metadata alone, without requesting an invoice:
+
+```js
+import { createCapabilityProbe } from 'farrier-kit/lnurl'
+
+const probe = createCapabilityProbe({ cacheTtlMs: 300000, maxEntries: 1000 })
+const cap = await probe.probe('alice@wallet.example.com')
+// { ok, reason?, address, minSendable, maxSendable, commentAllowed, allowsNostr, nostrPubkey }
+probe.invalidate('alice@wallet.example.com') // or invalidate() for everything
+```
+
+Its options are `fetchImpl`, `timeoutMs`, `urlGuard`, `cacheTtlMs` (default 5
+minutes), `maxEntries` (default 1000, oldest evicted first) and `now`. A fetch or
+guard failure comes back as `{ ok: false, reason }` and is cached too. Only an
+unparseable address throws (`BAD_ADDRESS`).
 
 ## http
 
@@ -171,10 +338,18 @@ import { fetchJson } from 'farrier-kit/http'
 
 const body = await fetchJson('https://example.com/.well-known/lnurlp/alice', {
   timeoutMs: 5000,   // default 8000
-  maxBytes: 262144,  // default 10 MB, metered and aborted mid-flight
+  maxBytes: 262144,  // default 10 MiB, metered and aborted mid-flight
   fetchImpl: myFetch,// optional, defaults to globalThis.fetch
 })
 ```
+
+`fetchJson<T = unknown>(url: string, options?: FetchJsonOptions): Promise<T>`.
+The remaining options are `method` (default `'GET'`), `headers`
+(`Record<string, string>`, merged over `accept: application/json`) and `body`.
+An object `body` is JSON-serialised and gets `content-type: application/json`
+unless you set one; a string `body` is sent as is. A non-2xx response throws
+`HttpError` with the numeric `status`, an oversized body throws
+`ResponseTooLargeError`, and a timeout throws a plain `Error`.
 
 `fetchJson` sets `redirect` to `'manual'` by default. For a payments util that is
 the safe choice, since a public host should not be able to 3xx-bounce a request
@@ -209,6 +384,25 @@ the pin proves you reached the address you resolved, which means nothing on a
 cleartext channel. Pass `allowPrivate: true` and `allowHttp: true` only for local
 development against regtest or localhost.
 
+`createPinnedFetch(options?: CreatePinnedFetchOptions): typeof fetch` takes:
+
+| Option | Default | Use |
+|--------|---------|-----|
+| `allowPrivate` | `false` | Permit private and reserved targets. Local development only. |
+| `allowHttp` | `false` | Permit plaintext `http:` URLs. Local development only, beside `allowPrivate`. |
+| `resolve` | `node:dns` lookup of all records | `(hostname: string) => Promise<LookupAddress[]>`. Supply your own resolver (DoH, a fixed allowlist) or a stub in tests. The result is still checked and pinned. |
+| `isBlockedAddress` | the core private and reserved classifier | `(address: string) => boolean`. Replace the notion of a blocked address. |
+| `requestImpl` | `node:http` or `node:https` by protocol | A low-level request function, as a testing seam or to supply a custom agent. |
+
+A request that is refused throws a `PinnedFetchError` with a `code`:
+
+| Code | Thrown when |
+|------|-------------|
+| `BAD_PROTOCOL` | The URL is `http:` without `allowHttp`, or neither `http:` nor `https:`. |
+| `DNS_ERROR` | The hostname could not be resolved. |
+| `NO_ADDRESS` | The resolver returned no addresses. |
+| `PRIVATE_ADDRESS` | Any resolved address is private or reserved. |
+
 ## SSRF: what the guard does and does not do
 
 `resolveLnurlPay` fetches from payee-controlled domains, so it is an SSRF surface.
@@ -239,9 +433,194 @@ private when you connect. That gap is DNS rebinding, and a check-then-fetch cann
 close it. `createPinnedFetch` does, by being the connection: it validates the
 address it is about to use and pins the socket to it.
 
-The `urlGuard` hook still exists for an extra synchronous check on every URL (an
-allowlist, say). It runs after the built-in checks, but it does not replace
-`createPinnedFetch` for rebinding.
+The `urlGuard` hook still exists for an extra check on every URL (an allowlist,
+say). It may be sync or async and runs after the built-in checks, but it does not
+replace `createPinnedFetch` for rebinding.
+
+## API reference
+
+Every export, by subpath. The root `farrier-kit` import re-exports everything below
+except the `farrier-kit/node` section.
+
+### farrier-kit/bolt11
+
+```ts
+decodeBolt11(invoice: string): DecodedBolt11                 // throws Bolt11Error
+tryDecodeBolt11(invoice: string): DecodedBolt11 | null
+bolt11PaymentHash(bolt11: string): string | null             // lowercase hex
+bolt11AmountMsats(bolt11: string): number | null             // null if amountless, undecodable or above Number.MAX_SAFE_INTEGER
+msatsToSatsFloor(msats: bigint | number): number             // explicit flooring; throws Bolt11Error
+verifyInvoiceCommitment(opts: {
+  bolt11: string
+  paymentHash: string
+  expectedMsats?: bigint | number
+  network?: Bolt11Network | null                              // default 'bc'
+  requireDecodable?: boolean                                  // default true
+}): CommitmentVerdict
+class Bolt11Error extends Error { code: string }
+const BOLT11_DEFAULT_EXPIRY_SECONDS = 3600
+
+type Bolt11Network = 'bc' | 'tb' | 'tbs' | 'bcrt' | 'sb'
+interface DecodedBolt11 {
+  network: Bolt11Network
+  amountMsats: bigint | null
+  amountSats: number | null                                   // only when the amount is whole
+  paymentHashHex: string
+  paymentSecretHex: string | null
+  description: string | null
+  descriptionHashHex: string | null
+  timestamp: number                                           // seconds since epoch
+  expirySeconds: number                                       // 3600 when the invoice has no x tag
+  minFinalCltvExpiry: number | null
+}
+interface CommitmentVerdict {
+  ok: boolean
+  verified?: boolean                                          // true when the invoice was decoded and compared
+  reason?: string
+  amountMsats?: bigint | null
+  network?: Bolt11Network
+}
+```
+
+### farrier-kit/preimage
+
+```ts
+isValidHex64(value: string): boolean
+generatePreimage(entropy?: string): string
+computePaymentHash(preimage: string): string
+verifyPreimage(preimage: string, expectedHash: string): boolean
+explainPreimage(args: { preimage: string; paymentHash: string }): PreimageVerdict
+
+interface PreimageVerdict { ok: boolean; reason?: string }
+```
+
+`explainPreimage` returns `{ ok: true }` or `{ ok: false, reason }`, where `reason`
+is one of:
+
+- `preimage must be 32-byte hex`
+- `payment_hash must be 32-byte hex`
+- `preimage does not hash to the committed payment_hash`
+
+### farrier-kit/lnurl
+
+```ts
+isLightningAddress(handle: string): boolean
+parseLightningAddress(address: string): LightningAddress     // throws LnurlError BAD_ADDRESS
+lnurlPayUrl(parts: { name: string; domain: string }): string // the LUD-16 well-known URL
+resolveLnurlPay(opts: ResolveLnurlPayOptions): Promise<ResolvedLnurlPay>
+verifyLud21(opts: {
+  verifyUrl: string
+  paymentHashHex?: string
+  fetchImpl?: typeof fetch
+  timeoutMs?: number
+  urlGuard?: (url: URL) => void | Promise<void>
+}): Promise<Lud21Result>
+createCapabilityProbe(opts?: {
+  fetchImpl?: typeof fetch
+  timeoutMs?: number
+  urlGuard?: (url: URL) => void | Promise<void>
+  cacheTtlMs?: number                                         // default 300000
+  maxEntries?: number                                         // default 1000
+  now?: () => number                                          // ms, default Date.now
+}): CapabilityProbe
+assertResolvableUrl(input: string | URL): URL                 // HTTPS, public host, no credentials; throws LnurlError BAD_URL
+isPrivateIpLiteral(hostname: string): boolean
+class LnurlError extends Error { code: string }
+
+interface LightningAddress { address: string; name: string; domain: string }  // lowercased
+interface ResolveLnurlPayOptions {
+  address?: string                                            // name@domain
+  lnurlpUrl?: string                                          // a direct LUD-06 URL instead
+  amountSats?: number
+  amountMsats?: bigint | number
+  comment?: string
+  nostr?: string                                              // JSON-encoded signed NIP-57 zap request
+  fetchImpl?: typeof fetch
+  timeoutMs?: number
+  urlGuard?: (url: URL) => void | Promise<void>
+  network?: Bolt11Network | null                              // default 'bc'
+  rejectExpired?: boolean                                     // default true
+  expirySlackSeconds?: number                                 // default 60
+  verifyDescriptionHash?: boolean                             // default true
+  nowSeconds?: () => number
+}
+interface ResolvedLnurlPay {
+  address: string | null
+  amountMsats: bigint
+  amountSats: number | null
+  bolt11: string
+  paymentHashHex: string
+  verifyUrl: string | null
+  zap: boolean
+  metadata: LnurlPayMetadata
+}
+interface LnurlPayMetadata {
+  tag: string
+  callback: string
+  minSendable: number                                         // msats
+  maxSendable: number                                         // msats
+  commentAllowed: number
+  allowsNostr: boolean
+  nostrPubkey: string
+  metadata: string                                            // raw LUD-06 JSON string
+}
+interface Lud21Result { settled: boolean; preimage: string | null; verified: boolean }
+interface LnurlPayCapability {
+  ok: boolean
+  reason?: string
+  address: string
+  minSendable: number
+  maxSendable: number
+  commentAllowed: number
+  allowsNostr: boolean
+  nostrPubkey: string
+}
+interface CapabilityProbe {
+  probe(address: string): Promise<LnurlPayCapability>
+  invalidate(address?: string): void
+}
+```
+
+`isPrivateIpLiteral` is only sound on a URL-normalised hostname (what
+`new URL(x).hostname` gives you). It does not catch `0x7f000001` or `2130706433`
+in a raw string; feed such input through `new URL()` first.
+
+### farrier-kit/http
+
+```ts
+fetchJson<T = unknown>(url: string, options?: FetchJsonOptions): Promise<T>
+class HttpError extends Error { status: number }
+class ResponseTooLargeError extends Error
+const DEFAULT_TIMEOUT_MS = 8000
+const DEFAULT_MAX_BYTES = 10485760                            // 10 MiB
+
+interface FetchJsonOptions {
+  fetchImpl?: typeof fetch
+  timeoutMs?: number
+  method?: string                                             // default 'GET'
+  headers?: Record<string, string>
+  body?: unknown                                              // objects are JSON-serialised, strings pass through
+  redirect?: RequestRedirect                                  // default 'manual'
+  maxBytes?: number                                           // default DEFAULT_MAX_BYTES
+}
+```
+
+### farrier-kit/node
+
+Node-only, and not re-exported from the root.
+
+```ts
+createPinnedFetch(options?: CreatePinnedFetchOptions): typeof fetch
+class PinnedFetchError extends Error { code: string }
+
+interface CreatePinnedFetchOptions {
+  allowPrivate?: boolean                                      // default false
+  allowHttp?: boolean                                         // default false
+  resolve?: (hostname: string) => Promise<LookupAddress[]>    // node:dns LookupAddress
+  isBlockedAddress?: (address: string) => boolean
+  requestImpl?: typeof import('node:http').request
+}
+```
 
 ## Conformance and porting (Kotlin, Swift, Rust)
 

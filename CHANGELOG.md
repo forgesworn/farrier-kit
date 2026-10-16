@@ -4,6 +4,21 @@ All notable changes to farrier-kit are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and the project uses
 [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Documented
+
+- Add a Quickstart that runs as written, an API reference covering every export
+  with parameter and return types, and the `Bolt11Error`, `LnurlError` and
+  `PinnedFetchError` code lists to the README.
+- Document the full `verifyInvoiceCommitment` options (`expectedMsats`, `network`,
+  `requireDecodable`), the invoice-gate defaults and opt-outs of
+  `resolveLnurlPay`, and the `createPinnedFetch` options (`allowHttp`, `resolve`,
+  `isBlockedAddress`, `requestImpl`).
+- State that a hostname resolving inward needs `createPinnedFetch`, not a
+  `urlGuard`, that `decodeBolt11` does not verify signatures or parse route
+  hints, and what the root import re-exports.
+
 ## [1.1.3] - 2026-08-14
 
 ### Documented
