@@ -1,9 +1,10 @@
 # farrier-kit
 
 > Lightning payment primitives for JavaScript/TypeScript: BOLT-11 invoice
-> decoding, preimage/payment-hash verification, and timeout-safe JSON fetch.
-> Browser and Node from one codebase (no node: imports), dual ESM+CJS, sole
-> runtime dependency @noble/hashes. MIT.
+> decoding, preimage/payment-hash verification, timeout-safe JSON fetch,
+> SSRF-guarded LNURL-pay/Lightning Address resolution, LUD-21 verify, and a
+> Node-only DNS-pinned fetch. Browser and Node from one codebase (no node:
+> imports in the core), dual ESM+CJS, sole runtime dependency @noble/hashes. MIT.
 
 Use farrier-kit when an application needs to READ or VERIFY Lightning payment
 data without running a Lightning node: extract a payment hash or amount from a
@@ -34,40 +35,72 @@ npm install farrier-kit
 
 ## API surface
 
+All hex values (payment hashes, preimages) are 64-character hex strings, never
+Uint8Array. `paymentHash` and `paymentHashHex` are the same form. The root
+`farrier-kit` import re-exports every export of /bolt11, /preimage, /http and
+/lnurl (values and types) and nothing from /node, so it stays browser-safe.
+Error codes for each class are listed in the README.
+
 - farrier-kit/bolt11: decodeBolt11(invoice) -> { network, amountMsats (bigint|null),
   amountSats (number|null, only when whole), paymentHashHex, paymentSecretHex,
   description, descriptionHashHex, timestamp, expirySeconds (spec default 3600),
-  minFinalCltvExpiry }. Throws Bolt11Error with .code. Also: tryDecodeBolt11
-  (null-returning), bolt11PaymentHash, bolt11AmountMsats, msatsToSatsFloor,
-  verifyInvoiceCommitment({bolt11, paymentHash, requireDecodable}).
+  minFinalCltvExpiry }. Throws Bolt11Error with .code (NOT_INVOICE, BAD_BECH32,
+  BAD_HRP, BAD_AMOUNT, OVERFLOW, TRUNCATED, BAD_TAG, BAD_PAYMENT_HASH,
+  MISSING_PAYMENT_HASH). Also: tryDecodeBolt11 (null-returning), bolt11PaymentHash,
+  bolt11AmountMsats, msatsToSatsFloor, BOLT11_DEFAULT_EXPIRY_SECONDS,
+  verifyInvoiceCommitment({ bolt11, paymentHash, expectedMsats?: bigint|number,
+  network?: Bolt11Network|null, requireDecodable? }) -> { ok, verified?, reason?,
+  amountMsats?, network? }. Pass expectedMsats or the amount is not checked;
+  network defaults to 'bc' (null skips); requireDecodable defaults to true. It does
+  not check expiry or description hash. ok:true with verified:false is a deferral,
+  not safe to pay.
 - farrier-kit/preimage: isValidHex64, generatePreimage(entropy?),
-  computePaymentHash(preimage), verifyPreimage(preimage, expectedHash)
-  (constant-time), explainPreimage({preimage, paymentHash}) -> {ok, reason?}.
+  computePaymentHash(preimage) -> hex, verifyPreimage(preimage, expectedHash)
+  (constant-time, false on malformed input, never throws), explainPreimage({preimage,
+  paymentHash}) -> {ok, reason?}. generatePreimage and computePaymentHash throw a
+  plain Error on non-hex.
 - farrier-kit/lnurl: parseLightningAddress / isLightningAddress / lnurlPayUrl;
-  resolveLnurlPay({address|lnurlpUrl, amountSats|amountMsats, comment?, nostr?,
-  fetchImpl?, urlGuard?, network?, rejectExpired?, verifyDescriptionHash?,
-  nowSeconds?}) -> {bolt11, paymentHashHex, verifyUrl?, zap, metadata}. The
-  returned invoice is decoded and checked: amount equals the request, network
-  matches (default 'bc'/mainnet), not expired, and description_hash matches the
-  metadata when an h tag is present. SSRF guard: HTTPS-only, credential-free,
+  resolveLnurlPay({address|lnurlpUrl, amountSats|amountMsats, comment?, nostr?
+  (JSON string of a signed NIP-57 zap request), fetchImpl?, timeoutMs?, urlGuard?,
+  network?, rejectExpired?, expirySlackSeconds?, verifyDescriptionHash?,
+  nowSeconds?}) -> {address, amountMsats, amountSats, bolt11, paymentHashHex,
+  verifyUrl (string|null), zap (boolean), metadata}. The returned invoice is
+  decoded and checked: amount equals the request (always, no opt-out), network
+  matches (default 'bc'/mainnet, network:null skips), not expired (default on,
+  rejectExpired:false skips, expirySlackSeconds default 60), and description_hash
+  matches the metadata when an h tag is present and the service returned a metadata
+  string (default on, verifyDescriptionHash:false skips; a zap invoice must carry
+  an h tag committing to the zap request). LnurlError codes: BAD_ADDRESS, BAD_URL,
+  BAD_AMOUNT, SERVICE_ERROR, NOT_PAYREQUEST, NO_CALLBACK, BELOW_MIN, ABOVE_MAX,
+  NO_INVOICE, BAD_INVOICE, AMOUNT_MISMATCH, NETWORK_MISMATCH, INVOICE_EXPIRED,
+  DESCRIPTION_HASH_MISMATCH. SSRF guard (no opt-out): HTTPS-only, credential-free,
   rejects localhost/.local/.internal and private/reserved IP literals (IPv4 and
   normalised IPv6: mapped/NAT64/6to4/Teredo/ULA/link-local/multicast), refuses
-  redirects, caps response size. The guard classifies IP LITERALS only; a
-  hostname resolving to a private IP needs a server-side urlGuard (README
-  recipe). verifyLud21({verifyUrl, paymentHashHex?}) -> {settled, preimage,
-  verified} (verified=true only on cryptographic preimage match);
-  createCapabilityProbe({maxEntries?}) -> bounded TTL metadata probing;
-  assertResolvableUrl, isPrivateIpLiteral (only sound on URL-normalised hosts),
-  LnurlError.
-- farrier-kit/http: fetchJson(url, {fetchImpl?, timeoutMs?, method?, headers?,
-  body?, redirect?}), HttpError, DEFAULT_TIMEOUT_MS.
+  redirects, caps response size. The guard classifies IP LITERALS only; a hostname
+  resolving to a private IP needs fetchImpl: createPinnedFetch() from
+  farrier-kit/node; urlGuard is only an extra check (sync or async) and cannot close
+  DNS rebinding. verifyLud21({verifyUrl, paymentHashHex?, fetchImpl?, timeoutMs?,
+  urlGuard?}) -> {settled, preimage (string|null), verified} (verified=true only on
+  cryptographic preimage match); createCapabilityProbe({fetchImpl?, timeoutMs?,
+  urlGuard?, cacheTtlMs?, maxEntries?, now?}) -> { probe(address) -> {ok, reason?,
+  address, minSendable, maxSendable, commentAllowed, allowsNostr, nostrPubkey},
+  invalidate(address?) } (bounded TTL metadata probing, metadata only, never
+  requests an invoice); assertResolvableUrl, isPrivateIpLiteral (only sound on
+  URL-normalised hosts), LnurlError.
+- farrier-kit/http: fetchJson(url, {fetchImpl?, timeoutMs?, maxBytes?, method?,
+  headers?, body?, redirect?}) (timeoutMs default 8000, maxBytes default 10 MiB,
+  redirect default 'manual'), HttpError (.status), ResponseTooLargeError,
+  DEFAULT_TIMEOUT_MS, DEFAULT_MAX_BYTES. A timeout throws a plain Error.
 - farrier-kit/node: NODE-ONLY (uses node: builtins, not imported by the root, so
-  the browser core stays clean). createPinnedFetch({allowPrivate?, resolve?}) ->
-  a fetchImpl for resolveLnurlPay/verifyLud21/createCapabilityProbe that closes
-  the DNS-rebinding window a check-then-fetch urlGuard cannot: resolves the host
-  once, rejects any private/reserved answer (IPv4+IPv6), pins the socket to the
-  approved address (no second lookup), keeps SNI/cert/Host on the hostname, never
-  follows redirects. PinnedFetchError. Server-side only; browsers cannot DNS-pin.
+  the browser core stays clean). createPinnedFetch({allowPrivate?, allowHttp?,
+  resolve?, isBlockedAddress?, requestImpl?}) -> a fetchImpl for
+  resolveLnurlPay/verifyLud21/createCapabilityProbe that closes the DNS-rebinding
+  window a check-then-fetch urlGuard cannot: resolves the host once, rejects any
+  private/reserved answer (IPv4+IPv6), pins the socket to the approved address (no
+  second lookup), keeps SNI/cert/Host on the hostname, never follows redirects,
+  HTTPS-only unless allowHttp. allowPrivate and allowHttp are for local development
+  only. PinnedFetchError (.code: BAD_PROTOCOL, DNS_ERROR, NO_ADDRESS,
+  PRIVATE_ADDRESS). Server-side only; browsers cannot DNS-pin.
 
 ## Key facts
 
@@ -80,8 +113,18 @@ npm install farrier-kit
 
 ## Example
 
-import { decodeBolt11 } from 'farrier-kit/bolt11'
-import { verifyPreimage } from 'farrier-kit/preimage'
-const inv = decodeBolt11(bolt11)
-// after payment: counterparty reveals preimage
-const paid = verifyPreimage(preimage, inv.paymentHashHex)
+The invoice is the with-description-and-expiry vector from vectors/bolt11.json:
+mainnet, 250000 sats, synthetic zero signature (for testing, never payable).
+
+import { decodeBolt11, verifyInvoiceCommitment } from 'farrier-kit/bolt11'
+import { generatePreimage, computePaymentHash, verifyPreimage } from 'farrier-kit/preimage'
+const invoice = 'lnbc2500u1pj48ugqpp55xs6rgdp5xs6rgdp5xs6rgdp5xs6rgdp5xs6rgdp5xs6rgdp5xssdqdxysxxmmxvejk2xqzpuqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq02rq0p'
+const expectedHash = 'a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1'
+const inv = decodeBolt11(invoice)
+// before paying: hash and exact amount must match (mainnet is the default)
+const check = verifyInvoiceCommitment({ bolt11: invoice, paymentHash: expectedHash, expectedMsats: 250000000n })
+if (!check.ok) throw new Error(check.reason)
+// after payment: the counterparty reveals the preimage (here we mint our own pair)
+const preimage = generatePreimage()
+const paymentHash = computePaymentHash(preimage)
+const paid = verifyPreimage(preimage, paymentHash) // true
