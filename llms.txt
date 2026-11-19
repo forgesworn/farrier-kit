@@ -23,6 +23,12 @@ so Kotlin/Swift/Rust ports can validate byte-for-byte: bolt11 decode, preimage
 (SHA-256), Lightning Address parse, SSRF IP classification, description-hash.
 amountMsats is a decimal string in the vectors (may exceed 2^53).
 
+## ForgeSworn ecosystem
+
+- [ForgeSworn library guide](https://forgesworn.dev/llms.txt): Find related libraries, tools and integration guides by task and runtime.
+- [ForgeSworn on GitHub](https://github.com/forgesworn): Browse the organisation’s public repositories.
+- [Project source](https://github.com/forgesworn/farrier-kit): Canonical source repository, documentation and release information.
+
 ## Live demo
 
 https://farrier-kit.forgesworn.dev runs this library in the browser: BOLT-11
